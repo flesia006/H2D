@@ -1,0 +1,22 @@
+# Unreal Engine
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+
+# Visual Studio
+.vs/
+*.sln
+*.suo
+*.user
+
+# JetBrains
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Claude Code internal
+.claude/
