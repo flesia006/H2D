@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\AnthropicClaude\" -ErrorAction SilentlyContinue | Select-Object Name, FullName)",
+      "mcp__unreal-editor__execute_script",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
+    ]
+  }
+}

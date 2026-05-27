@@ -67,5 +67,5 @@ DerivedDataCache/*
 Thumbs.db
 .DS_Store
 
-# Claude Code internal
-.claude/
+# Dev tooling (daily work-report generator: secret config + generated reports)
+.devtools/
