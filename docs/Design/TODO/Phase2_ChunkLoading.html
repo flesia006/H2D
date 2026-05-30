@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Phase 2 — 다중 청크 동적 로딩 + 입력</title>
+<style>
+body { font-family: -apple-system, "Malgun Gothic", system-ui, sans-serif;
+       max-width: 920px; margin: 32px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+header { border-bottom: 2px solid #1a5fb4; padding-bottom: 10px; margin-bottom: 22px; }
+header h1 { margin: 0 0 4px; color: #1a3a6b; }
+header .meta { color: #666; font-size: 13px; }
+nav.local { font-size: 13px; color: #666; margin: 0 0 18px; }
+nav.local a { color: #1a5fb4; text-decoration: none; }
+h2 { color: #1a5fb4; margin-top: 1.8em; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+.task { background: #f9fafb; border: 1px solid #e5e7eb; border-left: 4px solid #1a5fb4;
+        border-radius: 6px; padding: 14px 18px; margin: 18px 0; }
+.task h3 { margin-top: 0; color: #1a3a6b; }
+.task .meta { color: #888; font-size: 12px; margin-bottom: 8px; }
+.task h4 { color: #444; margin: 0.9em 0 0.3em; font-size: 14px; }
+.dod { background: #eef6ee; border-left: 3px solid #2e7d32; padding: 6px 12px;
+       margin-top: 10px; font-size: 14px; }
+.dod strong { color: #2e7d32; }
+.status { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.s-todo { background: #e5e7eb; color: #444; }
+code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px;
+       font-family: Consolas, monospace; font-size: 13px; color: #c0392b; }
+pre { background: #2b2b2b; padding: 12px 16px; border-radius: 6px;
+      overflow-x: auto; font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+pre code, pre code.hljs { background: transparent; padding: 0; color: #a9b7c6; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/androidstudio.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+</head>
+<body>
+
+<header>
+  <h1>Phase 2 — 다중 청크 동적 로딩 + 입력</h1>
+  <div class="meta">예상 1~2주 · Task 8개 · 목표: 끝없는 평지에서 이동·채굴·배치 가능</div>
+</header>
+<nav class="local">← <a href="Phase1_SingleChunk.html">Phase 1</a> · <a href="Index.html">인덱스</a> · 다음: <a href="Phase3_TerrainNoise.html">Phase 3</a></nav>
+
+<section>
+<h2>완료 시 모습</h2>
+<ul>
+  <li>플레이어 주변 반경 안의 청크들이 자동 로드/언로드</li>
+  <li>인접 청크 경계가 매끄럽게 이어짐 (이웃 블록 정상 컬링)</li>
+  <li>좌클릭으로 블록 파괴, 우클릭으로 블록 배치 → 청크 메시 즉시 갱신</li>
+  <li>청크 생성이 비동기 워커에서 수행되어 게임 스레드 hitch 없음</li>
+</ul>
+</section>
+
+<!-- Task 2.1 -->
+<div class="task">
+<h3>Task 2.1 — <code>UVoxelWorld</code> 골격</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>모든 청크를 관리하는 월드 객체. 로드 청크 맵, 큐, Tick 인터페이스.</p>
+<h4>코드</h4>
+<pre><code>// VoxelWorld.h
+#pragma once
+#include "UObject/Object.h"
+#include "Chunk.h"
+#include "VoxelWorld.generated.h"
+
+class AChunkActor;
+
+UCLASS(BlueprintType)
+class HYBRIDVOXEL_API UVoxelWorld : public UObject {
+    GENERATED_BODY()
+public:
+    UPROPERTY(EditAnywhere) int64 Seed = 0;
+    UPROPERTY(EditAnywhere) int32 LoadRadiusChunks = 7;
+    UPROPERTY(EditAnywhere) TSubclassOf&lt;AChunkActor&gt; ChunkActorClass;
+
+    void Tick(float DeltaTime, const FVector&amp; PlayerWorldPos);
+
+    BlockId GetBlockWorld(const FIntVector&amp; WorldBlock) const;
+    void    SetBlockWorld(const FIntVector&amp; WorldBlock, BlockId Id);
+
+private:
+    TMap&lt;FIntVector, TSharedPtr&lt;FChunk&gt;&gt; Chunks;     // gameplay side data
+    TMap&lt;FIntVector, TWeakObjectPtr&lt;AChunkActor&gt;&gt; Actors; // visual side
+    TQueue&lt;FIntVector&gt; LoadQueue;
+    TSet&lt;FIntVector&gt;   Pending;  // 로드 진행 중
+
+    void EnqueueAroundPlayer(const FIntVector&amp; PlayerChunk);
+    void UnloadFarFrom(const FIntVector&amp; PlayerChunk);
+};
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 컴파일 통과. 단위 호출(Seed, GetBlock 기본값)이 동작.</div>
+</div>
+
+<!-- Task 2.2 -->
+<div class="task">
+<h3>Task 2.2 — 좌표 변환 헬퍼</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>월드 블록 좌표 ↔ 청크 좌표 ↔ 청크 내 로컬 좌표 변환을 한곳에 모아 실수 방지.</p>
+<h4>코드</h4>
+<pre><code>// VoxelCoord.h
+namespace HybridVoxel {
+
+inline FIntVector WorldBlockToChunk(const FIntVector&amp; Wb) {
+    auto fdiv = [](int32 v, int32 s){ return (v &gt;= 0) ? (v / s) : ((v - s + 1) / s); };
+    return { fdiv(Wb.X, CHUNK_SIZE), fdiv(Wb.Y, CHUNK_SIZE), fdiv(Wb.Z, CHUNK_SIZE) };
+}
+inline FIntVector WorldBlockToLocal(const FIntVector&amp; Wb) {
+    auto fmod = [](int32 v, int32 s){ int32 r = v % s; return (r &lt; 0) ? r + s : r; };
+    return { fmod(Wb.X, CHUNK_SIZE), fmod(Wb.Y, CHUNK_SIZE), fmod(Wb.Z, CHUNK_SIZE) };
+}
+inline FVector ChunkOriginToWorld(const FIntVector&amp; Cc) {
+    return FVector(Cc.X * CHUNK_SIZE * 100.0,
+                   Cc.Y * CHUNK_SIZE * 100.0,
+                   Cc.Z * CHUNK_SIZE * 100.0);
+}
+
+} // namespace HybridVoxel
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 음수 좌표(-1, -16, -17 등)에서도 청크/로컬 분해가 일관(<code>chunk*16+local == world</code>).</div>
+</div>
+
+<!-- Task 2.3 -->
+<div class="task">
+<h3>Task 2.3 — 로드/언로드 큐와 우선순위</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>플레이어 인근부터 채우고 멀리 있는 청크는 즉시 파괴하지 않고 캐시 후보로 분리.</p>
+<h4>코드</h4>
+<pre><code>void UVoxelWorld::EnqueueAroundPlayer(const FIntVector&amp; PC) {
+    const int32 R = LoadRadiusChunks;
+    TArray&lt;FIntVector&gt; Wanted;
+    for (int32 dz=-R; dz&lt;=R; ++dz)
+    for (int32 dy=-R; dy&lt;=R; ++dy)
+    for (int32 dx=-R; dx&lt;=R; ++dx)
+        Wanted.Add(PC + FIntVector(dx,dy,dz));
+
+    // 가까운 청크 먼저
+    Wanted.Sort([&amp;](const FIntVector&amp; A, const FIntVector&amp; B){
+        return (A - PC).SizeSquared() &lt; (B - PC).SizeSquared();
+    });
+    for (const auto&amp; C : Wanted) {
+        if (!Chunks.Contains(C) &amp;&amp; !Pending.Contains(C)) {
+            LoadQueue.Enqueue(C); Pending.Add(C);
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 플레이어가 한 청크 경계를 넘으면 새 청크들이 가까운 순으로 큐에 들어감.</div>
+</div>
+
+<!-- Task 2.4 -->
+<div class="task">
+<h3>Task 2.4 — Tick: 반경 로드 + 언로드</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>매 프레임 플레이어 청크 좌표를 파악, 로드 영역 갱신.</p>
+<h4>코드</h4>
+<pre><code>void UVoxelWorld::Tick(float DeltaTime, const FVector&amp; PlayerWorld) {
+    using namespace HybridVoxel;
+    FIntVector PB(FMath::FloorToInt(PlayerWorld.X / 100.0f),
+                  FMath::FloorToInt(PlayerWorld.Y / 100.0f),
+                  FMath::FloorToInt(PlayerWorld.Z / 100.0f));
+    FIntVector PC = WorldBlockToChunk(PB);
+
+    EnqueueAroundPlayer(PC);
+    UnloadFarFrom(PC);
+
+    // 프레임당 N개만 처리 (Phase 2.5에서 비동기로 발전)
+    for (int32 i=0; i&lt;2; ++i) {
+        FIntVector C;
+        if (!LoadQueue.Dequeue(C)) break;
+        // (임시) 평지 청크 생성 → Phase 3에서 노이즈로 교체
+        auto Sp = MakeShared&lt;FChunk&gt;(); Sp->Coord = C;
+        if (C.Z &lt; 0) for (int32 i2=0;i2&lt;HybridVoxel::CHUNK_VOLUME;++i2) Sp->Blocks[i2]=(BlockId)EBlockId::Stone;
+        Chunks.Add(C, Sp); Pending.Remove(C);
+        SpawnOrUpdateActor(C, *Sp);
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 플레이어가 이동하면 시야 반경의 청크들이 계속 새로 생기고 멀어진 청크는 사라짐.</div>
+</div>
+
+<!-- Task 2.5 -->
+<div class="task">
+<h3>Task 2.5 — <code>FChunkGenTask</code> 비동기화</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>청크 데이터 생성 + 메시 빌드를 워커 스레드로 옮겨 hitch 제거.</p>
+<h4>코드</h4>
+<pre><code>// ChunkGenTask.h
+class FChunkGenTask : public FNonAbandonableTask {
+public:
+    FChunkGenTask(int64 InSeed, FIntVector InCoord) : Seed(InSeed), Coord(InCoord) {}
+    int64 Seed; FIntVector Coord;
+    TSharedPtr&lt;FChunk&gt; ResultChunk;
+    FChunkMeshData     ResultMesh;
+
+    FORCEINLINE TStatId GetStatId() const {
+        RETURN_QUICK_DECLARE_CYCLE_STAT(FChunkGenTask, STATGROUP_ThreadPoolAsyncTasks);
+    }
+    void DoWork() {
+        ResultChunk = MakeShared&lt;FChunk&gt;();
+        ResultChunk->Coord = Coord;
+        GenerateChunkData(Seed, *ResultChunk);   // Phase 3에서 본격 구현
+        BuildChunkMesh(*ResultChunk, ResultMesh);
+    }
+};
+
+// 사용
+auto* Task = new FAsyncTask&lt;FChunkGenTask&gt;(Seed, Coord);
+Task->StartBackgroundTask();
+// 완료는 별도 풀에서 폴링하거나 콜백으로 게임 스레드 적용
+</code></pre>
+<div class="dod"><strong>DoD</strong> · stat 명령으로 게임 스레드 hitch &lt; 2ms, 청크 생성 시간은 워커에서 측정.</div>
+</div>
+
+<!-- Task 2.6 -->
+<div class="task">
+<h3>Task 2.6 — 인접 청크 경계 처리</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>청크 경계에서 이웃 청크의 블록을 조회해 페이스 컬링 정확도 확보. Phase 1에서 "경계 밖=투명"으로 둔 가정 교체.</p>
+<h4>코드</h4>
+<pre><code>// 메시 빌드 시 콜백으로 이웃 lookup 주입
+using FNeighborLookup = TFunction&lt;BlockId(const FIntVector&amp; LocalOrCross)&gt;;
+
+void BuildChunkMeshWithNeighbors(const FChunk&amp; C, FChunkMeshData&amp; Out,
+    const FNeighborLookup&amp; Neighbor);
+
+// VoxelWorld에서
+BlockId UVoxelWorld::GetBlockWorld(const FIntVector&amp; Wb) const {
+    using namespace HybridVoxel;
+    FIntVector Cc = WorldBlockToChunk(Wb);
+    if (const auto* Found = Chunks.Find(Cc)) {
+        FIntVector L = WorldBlockToLocal(Wb);
+        return (*Found)->Get(L.X, L.Y, L.Z);
+    }
+    return (BlockId)EBlockId::Air; // 미로드 청크는 일단 Air 취급
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 인접한 두 청크 사이 경계면이 중복 그려지지 않고, 빈틈도 생기지 않음.</div>
+</div>
+
+<!-- Task 2.7 -->
+<div class="task">
+<h3>Task 2.7 — 채굴 / 배치 입력</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>플레이어 카메라에서 레이캐스트 → 맞은 블록 좌표 산출 → 좌클릭 파괴 / 우클릭 인접에 배치.</p>
+<h4>코드</h4>
+<pre><code>// Player 또는 별도 컴포넌트에서
+bool RaycastHitBlock(FIntVector&amp; OutBlock, FIntVector&amp; OutNeighborForPlace) {
+    FVector Start = Camera->GetComponentLocation();
+    FVector End   = Start + Camera->GetForwardVector() * 600.0f;
+    FHitResult Hit;
+    if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility)) return false;
+
+    // 충돌 좌표를 블록 좌표로 변환 (살짝 안쪽으로 -normal*0.5)
+    FVector P = Hit.ImpactPoint - Hit.ImpactNormal * 0.5f;
+    OutBlock = FIntVector(FMath::FloorToInt(P.X/100), FMath::FloorToInt(P.Y/100), FMath::FloorToInt(P.Z/100));
+    FVector Q = Hit.ImpactPoint + Hit.ImpactNormal * 0.5f;
+    OutNeighborForPlace = FIntVector(FMath::FloorToInt(Q.X/100), FMath::FloorToInt(Q.Y/100), FMath::FloorToInt(Q.Z/100));
+    return true;
+}
+
+void OnPrimary() {  // 채굴
+    FIntVector B, N; if (RaycastHitBlock(B,N)) World->SetBlockWorld(B, (BlockId)EBlockId::Air);
+}
+void OnSecondary(EBlockId Selected) {  // 배치
+    FIntVector B, N; if (RaycastHitBlock(B,N)) World->SetBlockWorld(N, (BlockId)Selected);
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 좌클릭으로 면 한 칸 사라지고 우클릭으로 그 자리 인접에 블록이 생긴다. 청크 메시 즉시 갱신.</div>
+</div>
+
+<!-- Task 2.8 -->
+<div class="task">
+<h3>Task 2.8 — Dirty 청크 재메싱 스로틀</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>블록 변경 시 dirty 표시 → Tick에서 프레임당 N개씩 재메싱 (비동기 권장).</p>
+<h4>코드</h4>
+<pre><code>void UVoxelWorld::Tick(float Dt, const FVector&amp; PlayerWorld) {
+    // ... 로드 처리 ...
+
+    int32 Budget = 2;
+    for (auto&amp; KV : Chunks) {
+        if (Budget == 0) break;
+        if (!KV.Value->bDirty) continue;
+        KV.Value->bDirty = false;
+        // 비동기 재메싱 큐잉 (실패 시 동기 fallback)
+        EnqueueRemesh(KV.Key);
+        --Budget;
+    }
+}
+
+// SetBlockWorld 시
+void UVoxelWorld::SetBlockWorld(const FIntVector&amp; Wb, BlockId Id) {
+    auto Cc = HybridVoxel::WorldBlockToChunk(Wb);
+    auto L  = HybridVoxel::WorldBlockToLocal(Wb);
+    if (auto* C = Chunks.Find(Cc)) {
+        (*C)->Set(L.X, L.Y, L.Z, Id);
+        // 경계 블록이면 이웃 청크도 dirty
+        for (int32 a=0; a&lt;3; ++a) if (L[a]==0 || L[a]==HybridVoxel::CHUNK_SIZE-1) {
+            FIntVector N = Cc; N[a] += (L[a]==0 ? -1 : 1);
+            if (auto* Nc = Chunks.Find(N)) (*Nc)->bDirty = true;
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 연속으로 블록을 깨도 hitch 없음. 경계 블록 파괴 시 이웃 청크 메시도 같이 갱신.</div>
+</div>
+
+<section>
+<h2>Phase 2 회고</h2>
+<ul>
+  <li>실제 소요 기간:</li>
+  <li>비동기 패턴 선택(FAsyncTask vs UE5 TaskGraph) 회고:</li>
+  <li>로드 반경·예산값(LoadRadius, Budget) 최종 수치:</li>
+</ul>
+</section>
+
+</body>
+</html>

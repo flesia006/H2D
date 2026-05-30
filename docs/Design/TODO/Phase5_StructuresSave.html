@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Phase 5 — 구조물 + 세이브/로드</title>
+<style>
+body { font-family: -apple-system, "Malgun Gothic", system-ui, sans-serif;
+       max-width: 920px; margin: 32px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+header { border-bottom: 2px solid #1a5fb4; padding-bottom: 10px; margin-bottom: 22px; }
+header h1 { margin: 0 0 4px; color: #1a3a6b; }
+header .meta { color: #666; font-size: 13px; }
+nav.local { font-size: 13px; color: #666; margin: 0 0 18px; }
+nav.local a { color: #1a5fb4; text-decoration: none; }
+h2 { color: #1a5fb4; margin-top: 1.8em; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+.task { background: #f9fafb; border: 1px solid #e5e7eb; border-left: 4px solid #1a5fb4;
+        border-radius: 6px; padding: 14px 18px; margin: 18px 0; }
+.task h3 { margin-top: 0; color: #1a3a6b; }
+.task .meta { color: #888; font-size: 12px; margin-bottom: 8px; }
+.task h4 { color: #444; margin: 0.9em 0 0.3em; font-size: 14px; }
+.dod { background: #eef6ee; border-left: 3px solid #2e7d32; padding: 6px 12px;
+       margin-top: 10px; font-size: 14px; }
+.dod strong { color: #2e7d32; }
+.status { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.s-todo { background: #e5e7eb; color: #444; }
+code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px;
+       font-family: Consolas, monospace; font-size: 13px; color: #c0392b; }
+pre { background: #2b2b2b; padding: 12px 16px; border-radius: 6px;
+      overflow-x: auto; font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+pre code, pre code.hljs { background: transparent; padding: 0; color: #a9b7c6; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/androidstudio.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+</head>
+<body>
+
+<header>
+  <h1>Phase 5 — 구조물 + 세이브/로드</h1>
+  <div class="meta">예상 2주 · Task 7개 · 목표: 마을 발견 가능 + 종료/재시작 시 수정사항 복원</div>
+</header>
+<nav class="local">← <a href="Phase4_BiomesCavesOres.html">Phase 4</a> · <a href="Index.html">인덱스</a></nav>
+
+<section>
+<h2>완료 시 모습</h2>
+<ul>
+  <li>일정 확률 청크에 마을·작은 던전이 스폰</li>
+  <li>구조물이 청크 경계를 자연스럽게 넘음 (Phase 4의 pending edits 재활용)</li>
+  <li>채굴·배치한 결과가 종료 후 재진입 시에도 그대로 복원</li>
+  <li>로딩 반경 밖 청크가 LRU 캐시에 머물러 왕복 시 즉시 재사용</li>
+</ul>
+</section>
+
+<!-- Task 5.1 -->
+<div class="task">
+<h3>Task 5.1 — 구조물 템플릿 포맷</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>구조물 1개를 "오프셋 + 블록ID" 배열로 표현. 회전·미러는 Phase 6에서.</p>
+<h4>코드</h4>
+<pre><code>USTRUCT(BlueprintType)
+struct FStructureBlock {
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere) FIntVector Offset = FIntVector::ZeroValue; // 앵커 기준
+    UPROPERTY(EditAnywhere) EBlockId   Id     = EBlockId::Air;
+};
+
+USTRUCT(BlueprintType)
+struct FStructureTemplate : public FTableRowBase {
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere) FString Name;
+    UPROPERTY(EditAnywhere) FIntVector Size;          // bounding box
+    UPROPERTY(EditAnywhere) TArray&lt;FStructureBlock&gt; Blocks;
+    UPROPERTY(EditAnywhere) float SpawnRate = 0.005f; // 청크당 확률
+};
+</code></pre>
+<div class="dod"><strong>DoD</strong> · <code>DT_Structures</code> 데이터테이블에서 row를 편집할 수 있고, 코드에서 enumerate 가능.</div>
+</div>
+
+<!-- Task 5.2 -->
+<div class="task">
+<h3>Task 5.2 — 첫 구조물: 작은 집 + 작은 방</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>마을의 최소 단위(집 1채)와 던전의 최소 단위(방 1개)를 데이터로 작성. 손으로 입력 or 에디터 헬퍼.</p>
+<h4>내용</h4>
+<ul>
+  <li>임시 헬퍼: 인게임에서 직접 쌓은 블록을 클립보드처럼 저장 → DataTable row로 export</li>
+  <li>또는 텍스트 파일에 "라인별 블록" 적고 임포트하는 커밋렛</li>
+</ul>
+<h4>코드</h4>
+<pre><code>// 임포트 헬퍼 (편집기 전용)
+void ImportStructureFromText(const FString&amp; Path, FStructureTemplate&amp; Out) {
+    TArray&lt;FString&gt; Lines; FFileHelper::LoadFileToStringArray(Lines, *Path);
+    // 형식: "x y z BlockName" 라인 반복
+    for (const FString&amp; L : Lines) {
+        int32 x,y,z; FString Name;
+        // 파싱 ...
+        FStructureBlock B; B.Offset = {x,y,z};
+        B.Id = ParseBlockId(Name); // EBlockId 변환
+        Out.Blocks.Add(B);
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 집 1채(벽 + 문 자리 + 지붕)와 방 1개(벽 + 문)가 데이터로 존재.</div>
+</div>
+
+<!-- Task 5.3 -->
+<div class="task">
+<h3>Task 5.3 — 청크 경계 넘는 스탬핑</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>청크 별 확률 판정 → 위치 결정 → 청크 안은 즉시, 밖은 Phase 4의 pending edits 큐 활용.</p>
+<h4>코드</h4>
+<pre><code>void TryStampStructures(uint64 Seed, FChunk&amp; C, int32 baseX, int32 baseY, int32 baseZ,
+                        const TArray&lt;FStructureTemplate&gt;&amp; Templates,
+                        UVoxelWorld&amp; World)
+{
+    for (const FStructureTemplate&amp; T : Templates) {
+        uint64 H = HybridVoxel::DeriveSeed(Seed, C.Coord.X, C.Coord.Y, C.Coord.Z, 4000 + GetTypeHash(T.Name));
+        if ((H % 1000) &gt;= (uint64)(T.SpawnRate * 1000.0f)) continue;
+
+        FRandomStream R((int32)H);
+        FIntVector Anchor(baseX + R.RandRange(0,15),
+                          baseY + R.RandRange(0,15),
+                          /*표면 z*/ FindSurfaceZ(C, R.RandRange(0,15), R.RandRange(0,15)));
+
+        for (const FStructureBlock&amp; SB : T.Blocks) {
+            FIntVector W = Anchor + SB.Offset;
+            FIntVector Cc = HybridVoxel::WorldBlockToChunk(W);
+            if (Cc == C.Coord) {
+                FIntVector L = HybridVoxel::WorldBlockToLocal(W);
+                C.Set(L.X, L.Y, L.Z, (BlockId)SB.Id);
+            } else {
+                World.EnqueuePendingFor(Cc, { W, (BlockId)SB.Id });
+            }
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 마을 1채가 두 청크에 걸쳐 있어도 정상 완성. 어느 청크가 먼저 로드돼도 결과 동일.</div>
+</div>
+
+<!-- Task 5.4 -->
+<div class="task">
+<h3>Task 5.4 — 청크 델타 직렬화</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>사용자가 수정한 블록만 (localIndex, blockId) 쌍으로 압축 저장.</p>
+<h4>코드</h4>
+<pre><code>struct FBlockEdit { uint16 LocalIndex; uint8 NewId; };
+
+struct FChunkSave {
+    FIntVector Coord;
+    TArray&lt;FBlockEdit&gt; Edits;
+
+    friend FArchive&amp; operator&lt;&lt;(FArchive&amp; Ar, FChunkSave&amp; S) {
+        Ar &lt;&lt; S.Coord;
+        int32 N = S.Edits.Num(); Ar &lt;&lt; N;
+        if (Ar.IsLoading()) S.Edits.SetNum(N);
+        for (int32 i=0; i&lt;N; ++i) {
+            Ar &lt;&lt; S.Edits[i].LocalIndex;
+            Ar &lt;&lt; S.Edits[i].NewId;
+        }
+        return Ar;
+    }
+};
+
+// 청크에서 델타 추출
+void CollectEdits(const FChunk&amp; C, const FChunk&amp; ProcedurallyGenerated, FChunkSave&amp; Out) {
+    Out.Coord = C.Coord;
+    for (int32 i=0; i&lt;HybridVoxel::CHUNK_VOLUME; ++i) {
+        if (C.Blocks[i] != ProcedurallyGenerated.Blocks[i]) {
+            Out.Edits.Add({ (uint16)i, C.Blocks[i] });
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 청크당 평균 수십~수백 byte 수준. 수정 0이면 저장 스킵.</div>
+</div>
+
+<!-- Task 5.5 -->
+<div class="task">
+<h3>Task 5.5 — <code>USaveGame</code> 통합 (월드 메타 + 청크 분리)</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>월드 메타는 <code>USaveGame</code> 하나, 청크는 청크별 바이너리 파일로 분리(파일 거대화 방지).</p>
+<h4>코드</h4>
+<pre><code>UCLASS()
+class UWorldSave : public USaveGame {
+    GENERATED_BODY()
+public:
+    UPROPERTY() int32  Version = 1;
+    UPROPERTY() int64  Seed    = 0;
+    UPROPERTY() FVector PlayerPos = FVector::ZeroVector;
+    UPROPERTY() FIntVector BaseAnchor = FIntVector::ZeroValue;
+    // 인벤토리 등 ...
+};
+
+// 청크 파일 경로
+FString ChunkFilePath(const FString&amp; WorldName, const FIntVector&amp; C) {
+    return FPaths::ProjectSavedDir() / TEXT("VoxelWorlds") / WorldName /
+           FString::Printf(TEXT("c_%d_%d_%d.bin"), C.X, C.Y, C.Z);
+}
+
+void SaveChunkDelta(const FString&amp; WorldName, const FChunkSave&amp; S) {
+    TArray&lt;uint8&gt; Bytes;
+    FMemoryWriter Ar(Bytes); Ar &lt;&lt; const_cast&lt;FChunkSave&amp;&gt;(S);
+    FFileHelper::SaveArrayToFile(Bytes, *ChunkFilePath(WorldName, S.Coord));
+}
+
+bool LoadChunkDelta(const FString&amp; WorldName, FChunkSave&amp; OutS) {
+    TArray&lt;uint8&gt; Bytes;
+    if (!FFileHelper::LoadFileToArray(Bytes, *ChunkFilePath(WorldName, OutS.Coord))) return false;
+    FMemoryReader Ar(Bytes); Ar &lt;&lt; OutS;
+    return true;
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 게임 종료 시 변경된 청크가 디스크에 저장. 메타는 <code>UWorldSave</code> 1파일.</div>
+</div>
+
+<!-- Task 5.6 -->
+<div class="task">
+<h3>Task 5.6 — 로드 시 델타 적용</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>청크 생성 파이프라인 마지막 단계로 디스크 델타를 덮어쓰기.</p>
+<h4>코드</h4>
+<pre><code>void GenerateChunkData(int64 Seed, FChunk&amp; C, const FString&amp; WorldName) {
+    // 1) 절차적 생성 (Terrain → Biome → Caves → Ores → Structures → Vegetation)
+    // ...
+    // 2) 마지막에 사용자 델타 적용
+    FChunkSave S; S.Coord = C.Coord;
+    if (LoadChunkDelta(WorldName, S)) {
+        for (const auto&amp; E : S.Edits) {
+            C.Blocks[E.LocalIndex] = E.NewId;
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 채굴해서 만든 동굴·집이 다음 세션에서도 그대로 보임.</div>
+</div>
+
+<!-- Task 5.7 -->
+<div class="task">
+<h3>Task 5.7 — LRU 캐시</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>로딩 반경 밖 청크를 즉시 파괴하지 않고 N분간 보존 → 왕복 이동 시 재생성 비용 0.</p>
+<h4>코드</h4>
+<pre><code>struct FCachedChunk {
+    TSharedPtr&lt;FChunk&gt; Chunk;
+    FChunkMeshData     Mesh;
+    double             LastSeen; // FPlatformTime::Seconds()
+};
+
+class FChunkLRU {
+public:
+    int32 Capacity = 256;
+    void Put(const FIntVector&amp; C, FCachedChunk&amp; Entry);
+    bool TryGet(const FIntVector&amp; C, FCachedChunk&amp; Out);
+    void EvictOlderThan(double Seconds);
+private:
+    TMap&lt;FIntVector, FCachedChunk&gt; Map;
+};
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 한 청크 경계를 5번 왕복하면서 stat 측정 시, 두 번째 진입부터 청크 생성 시간 0.</div>
+</div>
+
+<section>
+<h2>Phase 5 회고</h2>
+<ul>
+  <li>구조물 데이터 포맷 최종 선택 (binary / DataTable / JSON):</li>
+  <li>세이브 파일 크기와 처음 의도 비교:</li>
+  <li>LRU 캐시 capacity 튜닝:</li>
+</ul>
+</section>
+
+<section>
+<h2>Phase 5 이후</h2>
+<ul>
+  <li>Phase 6 — 그리디 메싱 / 거리 LOD</li>
+  <li>물·유체 시뮬레이션</li>
+  <li>구조물 회전·미러</li>
+  <li>네트워킹 (멀티플레이) — 별도 결정</li>
+</ul>
+</section>
+
+</body>
+</html>

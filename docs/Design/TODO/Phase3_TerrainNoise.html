@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Phase 3 — 노이즈 기반 지형</title>
+<style>
+body { font-family: -apple-system, "Malgun Gothic", system-ui, sans-serif;
+       max-width: 920px; margin: 32px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+header { border-bottom: 2px solid #1a5fb4; padding-bottom: 10px; margin-bottom: 22px; }
+header h1 { margin: 0 0 4px; color: #1a3a6b; }
+header .meta { color: #666; font-size: 13px; }
+nav.local { font-size: 13px; color: #666; margin: 0 0 18px; }
+nav.local a { color: #1a5fb4; text-decoration: none; }
+h2 { color: #1a5fb4; margin-top: 1.8em; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+.task { background: #f9fafb; border: 1px solid #e5e7eb; border-left: 4px solid #1a5fb4;
+        border-radius: 6px; padding: 14px 18px; margin: 18px 0; }
+.task h3 { margin-top: 0; color: #1a3a6b; }
+.task .meta { color: #888; font-size: 12px; margin-bottom: 8px; }
+.task h4 { color: #444; margin: 0.9em 0 0.3em; font-size: 14px; }
+.dod { background: #eef6ee; border-left: 3px solid #2e7d32; padding: 6px 12px;
+       margin-top: 10px; font-size: 14px; }
+.dod strong { color: #2e7d32; }
+.status { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.s-todo { background: #e5e7eb; color: #444; }
+code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px;
+       font-family: Consolas, monospace; font-size: 13px; color: #c0392b; }
+pre { background: #2b2b2b; padding: 12px 16px; border-radius: 6px;
+      overflow-x: auto; font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+pre code, pre code.hljs { background: transparent; padding: 0; color: #a9b7c6; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/androidstudio.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+</head>
+<body>
+
+<header>
+  <h1>Phase 3 — 노이즈 기반 지형</h1>
+  <div class="meta">예상 2주 · Task 6개 · 목표: 시드로 결정되는 자연스러운 언덕·평원</div>
+</header>
+<nav class="local">← <a href="Phase2_ChunkLoading.html">Phase 2</a> · <a href="Index.html">인덱스</a> · 다음: <a href="Phase4_BiomesCavesOres.html">Phase 4</a></nav>
+
+<section>
+<h2>완료 시 모습</h2>
+<ul>
+  <li>월드 시드 1개로 결정되는 무한 지형</li>
+  <li>같은 시드 → 같은 지형 (재현성 검증 통과)</li>
+  <li>표면 1칸 Grass, 그 아래 4~5칸 Dirt, 더 아래는 Stone</li>
+  <li>텍스처 아틀라스 + 면별 올바른 UV</li>
+</ul>
+</section>
+
+<!-- Task 3.1 -->
+<div class="task">
+<h3>Task 3.1 — 시드 파생 해시</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>월드 시드 + 좌표 + 레이어 솔트로 결정론적 해시 생성. 모든 노이즈 레이어의 기반.</p>
+<h4>코드</h4>
+<pre><code>// VoxelHash.h
+namespace HybridVoxel {
+
+FORCEINLINE uint64 SplitMix64(uint64 x) {
+    x += 0x9E3779B97F4A7C15ull;
+    x = (x ^ (x &gt;&gt; 30)) * 0xBF58476D1CE4E5B9ull;
+    x = (x ^ (x &gt;&gt; 27)) * 0x94D049BB133111EBull;
+    return x ^ (x &gt;&gt; 31);
+}
+
+FORCEINLINE uint64 DeriveSeed(int64 WorldSeed, int32 X, int32 Y, int32 Z, uint32 LayerSalt) {
+    uint64 H = (uint64)WorldSeed ^ ((uint64)LayerSalt * 0xD2B74407B1CE6E93ull);
+    H = SplitMix64(H ^ (uint64)(uint32)X);
+    H = SplitMix64(H ^ (uint64)(uint32)Y);
+    H = SplitMix64(H ^ (uint64)(uint32)Z);
+    return H;
+}
+
+} // namespace HybridVoxel
+</code></pre>
+<div class="dod"><strong>DoD</strong> · (seed,X,Y,Z,salt) 같으면 결과 동일. salt만 바꿔도 분포가 시각적으로 무관해 보이는 정도로 분산.</div>
+</div>
+
+<!-- Task 3.2 -->
+<div class="task">
+<h3>Task 3.2 — 노이즈 라이브러리 통합</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>FastNoise2 통합 또는 자체 Perlin 구현. <strong>학습 목적이라면 자체 Perlin 추천.</strong></p>
+<h4>코드 (자체 구현 골자)</h4>
+<pre><code>// Perlin.h — Ken Perlin 2002 reference 기반 단순화
+namespace HybridVoxel {
+
+class FPerlin {
+public:
+    explicit FPerlin(uint64 Seed);
+    float Noise2D(float x, float y) const;
+    float Noise3D(float x, float y, float z) const;
+    float FBM2D(float x, float y, int octaves, float lac=2.0f, float gain=0.5f) const;
+private:
+    uint8 P[512];
+};
+
+} // namespace HybridVoxel
+</code></pre>
+<p>또는 FastNoise2: <code>ThirdParty/FastNoise2/</code> 에 헤더 배치, Build.cs에 include path 추가.</p>
+<div class="dod"><strong>DoD</strong> · 같은 시드의 인스턴스에서 같은 (x,y) 호출이 같은 값. 시각 디버그 텍스처에 정상 그라데이션 보임.</div>
+</div>
+
+<!-- Task 3.3 -->
+<div class="task">
+<h3>Task 3.3 — 높이맵 함수 (3-옥타브)</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>대륙(저주파) + 언덕(중주파) + 디테일(고주파)로 자연스러운 지형 라인.</p>
+<h4>코드</h4>
+<pre><code>// TerrainGen.h
+namespace HybridVoxel {
+
+constexpr uint32 SALT_CONTINENT = 1001;
+constexpr uint32 SALT_HILL      = 1002;
+constexpr uint32 SALT_DETAIL    = 1003;
+constexpr float  HEIGHT_MIN     = 32.0f;
+constexpr float  HEIGHT_MAX     = 96.0f;
+
+float SurfaceHeight(const FPerlin&amp; ContinentN,
+                    const FPerlin&amp; HillN,
+                    const FPerlin&amp; DetailN,
+                    int32 wx, int32 wy)
+{
+    float c = ContinentN.Noise2D(wx * 0.001f, wy * 0.001f);     // -1..1
+    float h = HillN.Noise2D     (wx * 0.01f,  wy * 0.01f) * 0.5f;
+    float d = DetailN.Noise2D   (wx * 0.05f,  wy * 0.05f) * 0.1f;
+    float u = FMath::Clamp((c + h + d) * 0.5f + 0.5f, 0.f, 1.f);
+    return FMath::Lerp(HEIGHT_MIN, HEIGHT_MAX, u);
+}
+
+} // namespace HybridVoxel
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 1024×1024 샘플링하여 회색 PNG로 덤프했을 때 자연스러운 등고선 보임.</div>
+</div>
+
+<!-- Task 3.4 -->
+<div class="task">
+<h3>Task 3.4 — 청크 생성 파이프라인 (Terrain 단계)</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>Phase 2의 임시 평지 생성 함수를 노이즈 기반으로 교체.</p>
+<h4>코드</h4>
+<pre><code>void GenerateChunkData(int64 Seed, FChunk&amp; C) {
+    using namespace HybridVoxel;
+    static FPerlin Continent(DeriveSeed(Seed,0,0,0,SALT_CONTINENT));
+    static FPerlin Hill     (DeriveSeed(Seed,0,0,0,SALT_HILL));
+    static FPerlin Detail   (DeriveSeed(Seed,0,0,0,SALT_DETAIL));
+
+    const int32 baseX = C.Coord.X * CHUNK_SIZE;
+    const int32 baseY = C.Coord.Y * CHUNK_SIZE;
+    const int32 baseZ = C.Coord.Z * CHUNK_SIZE;
+
+    for (int32 y=0; y&lt;CHUNK_SIZE; ++y)
+    for (int32 x=0; x&lt;CHUNK_SIZE; ++x) {
+        int32 wx = baseX + x, wy = baseY + y;
+        int32 surf = (int32)SurfaceHeight(Continent, Hill, Detail, wx, wy);
+
+        for (int32 z=0; z&lt;CHUNK_SIZE; ++z) {
+            int32 wz = baseZ + z;
+            BlockId Id = (BlockId)EBlockId::Air;
+            if      (wz &lt; surf - 4) Id = (BlockId)EBlockId::Stone;
+            else if (wz &lt; surf)     Id = (BlockId)EBlockId::Dirt;
+            else if (wz == surf)    Id = (BlockId)EBlockId::Grass;
+            C.Blocks[FChunk::LocalIndex(x,y,z)] = Id;
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 인게임에서 무한 평원·언덕이 자연스럽게 이어짐. 절벽·구멍 없음.</div>
+</div>
+
+<!-- Task 3.5 -->
+<div class="task">
+<h3>Task 3.5 — 텍스처 아틀라스 + UV 인덱스</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>모든 블록 면 텍스처를 1장(예: 16×16 칸, 각 32×32 px)에 모아 드로 콜 1개로.</p>
+<h4>코드</h4>
+<pre><code>// 메시 빌드에서 atlas index → uv 사각형 계산
+FORCEINLINE void AtlasUV(int32 atlasIdx, FVector2D Out[4]) {
+    const int32 cols = 16;
+    int32 col = atlasIdx % cols;
+    int32 row = atlasIdx / cols;
+    float u0 = (col + 0.001f) / cols, u1 = (col + 0.999f) / cols;
+    float v0 = (row + 0.001f) / cols, v1 = (row + 0.999f) / cols;
+    Out[0] = {u0, v0}; Out[1] = {u1, v0}; Out[2] = {u1, v1}; Out[3] = {u0, v1};
+}
+
+// 면 emit 시
+const FBlockType* Type = FBlockRegistry::Get((EBlockId)Id);
+FVector2D uv[4]; AtlasUV(Type->AtlasIndex[f], uv);
+Out.UV0.Add(uv[0]); Out.UV0.Add(uv[1]); Out.UV0.Add(uv[2]); Out.UV0.Add(uv[3]);
+</code></pre>
+<h4>내용 (에디터)</h4>
+<ul>
+  <li><code>T_VoxelAtlas</code> 임시 텍스처(블록별 단순 색 칸 16개) 제작</li>
+  <li>M_VoxelMaster의 BaseColor를 아틀라스 텍스처로 교체</li>
+</ul>
+<div class="dod"><strong>DoD</strong> · 블록별로 다른 면 텍스처(예: Grass 윗면=초록, 옆=흙) 정상 표시.</div>
+</div>
+
+<!-- Task 3.6 -->
+<div class="task">
+<h3>Task 3.6 — 재현성 / 시드 변경 테스트</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>같은 시드 → 같은 지형. 다른 시드 → 다른 지형. 회귀 방지.</p>
+<h4>코드</h4>
+<pre><code>// 자동화 테스트(또는 콘솔 명령)
+void TestSeedDeterminism() {
+    int64 S = 12345;
+    FChunk A; A.Coord = {3,7,1}; GenerateChunkData(S, A);
+    FChunk B; B.Coord = {3,7,1}; GenerateChunkData(S, B);
+    check(A.Blocks == B.Blocks);  // FArray operator== 가정
+
+    FChunk C; C.Coord = {3,7,1}; GenerateChunkData(S + 1, C);
+    check(!(A.Blocks == C.Blocks));
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 같은 시드로 두 번 생성한 청크의 블록 배열이 완전히 동일. 다른 시드는 다름.</div>
+</div>
+
+<section>
+<h2>Phase 3 회고</h2>
+<ul>
+  <li>최종 옥타브·주파수 값:</li>
+  <li>FastNoise2 채택 여부와 이유:</li>
+  <li>높이 범위(<code>HEIGHT_MIN/MAX</code>) 최종값:</li>
+</ul>
+</section>
+
+</body>
+</html>

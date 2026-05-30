@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Phase 4 — 바이옴 + 동굴 + 광물 + 식생</title>
+<style>
+body { font-family: -apple-system, "Malgun Gothic", system-ui, sans-serif;
+       max-width: 920px; margin: 32px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+header { border-bottom: 2px solid #1a5fb4; padding-bottom: 10px; margin-bottom: 22px; }
+header h1 { margin: 0 0 4px; color: #1a3a6b; }
+header .meta { color: #666; font-size: 13px; }
+nav.local { font-size: 13px; color: #666; margin: 0 0 18px; }
+nav.local a { color: #1a5fb4; text-decoration: none; }
+h2 { color: #1a5fb4; margin-top: 1.8em; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+.task { background: #f9fafb; border: 1px solid #e5e7eb; border-left: 4px solid #1a5fb4;
+        border-radius: 6px; padding: 14px 18px; margin: 18px 0; }
+.task h3 { margin-top: 0; color: #1a3a6b; }
+.task .meta { color: #888; font-size: 12px; margin-bottom: 8px; }
+.task h4 { color: #444; margin: 0.9em 0 0.3em; font-size: 14px; }
+.dod { background: #eef6ee; border-left: 3px solid #2e7d32; padding: 6px 12px;
+       margin-top: 10px; font-size: 14px; }
+.dod strong { color: #2e7d32; }
+.status { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.s-todo { background: #e5e7eb; color: #444; }
+code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px;
+       font-family: Consolas, monospace; font-size: 13px; color: #c0392b; }
+pre { background: #2b2b2b; padding: 12px 16px; border-radius: 6px;
+      overflow-x: auto; font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+pre code, pre code.hljs { background: transparent; padding: 0; color: #a9b7c6; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/androidstudio.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+</head>
+<body>
+
+<header>
+  <h1>Phase 4 — 바이옴 + 동굴 + 광물 + 식생</h1>
+  <div class="meta">예상 2~3주 · Task 7개 · 목표: 바이옴 전환 자연스럽고 동굴·광물 탐사 가능</div>
+</header>
+<nav class="local">← <a href="Phase3_TerrainNoise.html">Phase 3</a> · <a href="Index.html">인덱스</a> · 다음: <a href="Phase5_StructuresSave.html">Phase 5</a></nav>
+
+<section>
+<h2>완료 시 모습</h2>
+<ul>
+  <li>바이옴별로 표면 블록·식생·색조가 다름 (사막·평원·숲·툰드라 등)</li>
+  <li>지하에 자연스러운 동굴, 일부는 큰 동굴 시스템</li>
+  <li>Stone 안에 광물 베인이 깊이별로 분포 (Coal 흔함 → Gold 희귀)</li>
+  <li>풀·꽃·나무가 청크 경계를 자연스럽게 넘음</li>
+</ul>
+</section>
+
+<!-- Task 4.1 -->
+<div class="task">
+<h3>Task 4.1 — 온도/습도 노이즈</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>2D 저주파 노이즈 2장으로 바이옴 결정 입력.</p>
+<h4>코드</h4>
+<pre><code>constexpr uint32 SALT_TEMP     = 2001;
+constexpr uint32 SALT_HUMIDITY = 2002;
+
+float Temperature(const FPerlin&amp; N, int32 wx, int32 wy) {
+    return N.Noise2D(wx * 0.0008f, wy * 0.0008f); // -1..1
+}
+float Humidity(const FPerlin&amp; N, int32 wx, int32 wy) {
+    return N.Noise2D(wx * 0.0008f, wy * 0.0008f);
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 1024×1024 디버그 맵에 두 값이 부드러운 그라데이션으로 나옴.</div>
+</div>
+
+<!-- Task 4.2 -->
+<div class="task">
+<h3>Task 4.2 — 바이옴 매트릭스 + 표면 치환</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>온도/습도 격자로 9개 바이옴 결정. Phase 3 표면 블록(Grass)을 바이옴별로 치환.</p>
+<h4>코드</h4>
+<pre><code>enum class EBiome : uint8 {
+    Tundra, Taiga, SnowSwamp,
+    Plains, Forest, Swamp,
+    Desert, Savanna, Jungle
+};
+
+EBiome PickBiome(float temp, float hum) {
+    int32 t = temp &lt; -0.33f ? 0 : (temp &lt; 0.33f ? 1 : 2);
+    int32 h = hum  &lt; -0.33f ? 0 : (hum  &lt; 0.33f ? 1 : 2);
+    return (EBiome)(t * 3 + h);
+}
+
+EBlockId SurfaceBlockFor(EBiome B) {
+    switch (B) {
+        case EBiome::Tundra: case EBiome::Taiga: case EBiome::SnowSwamp:
+            return EBlockId::Grass; // 임시; 추후 EBlockId::Snow 추가
+        case EBiome::Desert: case EBiome::Savanna:
+            return EBlockId::Sand;
+        default: return EBlockId::Grass;
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 한 시드에서 사막/숲/평원이 자연스럽게 인접해서 보임.</div>
+</div>
+
+<!-- Task 4.3 -->
+<div class="task">
+<h3>Task 4.3 — 3D 동굴 노이즈</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>지표 아래 임의 빈 공간 생성. 임계값 튜닝으로 동굴 밀도 조정.</p>
+<h4>코드</h4>
+<pre><code>constexpr uint32 SALT_CAVE     = 3001;
+constexpr float  CAVE_THRESHOLD = 0.55f;
+
+void CarveCaves(FPerlin&amp; CaveN, FChunk&amp; C, int32 baseX, int32 baseY, int32 baseZ) {
+    using namespace HybridVoxel;
+    for (int32 z=0; z&lt;CHUNK_SIZE; ++z)
+    for (int32 y=0; y&lt;CHUNK_SIZE; ++y)
+    for (int32 x=0; x&lt;CHUNK_SIZE; ++x) {
+        BlockId&amp; B = C.Blocks[FChunk::LocalIndex(x,y,z)];
+        if (B == (BlockId)EBlockId::Air) continue;
+        int32 wz = baseZ + z;
+        if (wz &gt; 50) continue;  // 표면 가까이는 안 깎음
+        float n = CaveN.Noise3D((baseX+x)*0.04f, (baseY+y)*0.04f, wz*0.04f);
+        if (n &gt; CAVE_THRESHOLD) B = (BlockId)EBlockId::Air;
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 채굴해서 들어가면 자연스러운 동공, 임계값을 0.5~0.65 사이에서 튜닝 가능.</div>
+</div>
+
+<!-- Task 4.4 -->
+<div class="task">
+<h3>Task 4.4 — 광물 베인 데이터 + 배치</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>Stone을 광물로 치환. 깊이별 분포 + 클러스터.</p>
+<h4>코드</h4>
+<pre><code>struct FOreVein {
+    EBlockId BlockId;
+    float    Frequency;   // 0~1, 청크당 시도 비율
+    int32    ClusterSize; // 한 베인 평균 블록 수
+    int32    ZMin, ZMax;
+};
+
+static const FOreVein Veins[] = {
+    { EBlockId::CoalOre, 0.04f, 6, 0, 64 },
+    { EBlockId::IronOre, 0.02f, 5, 0, 40 },
+    { EBlockId::GoldOre, 0.005f,4, 0, 20 },
+};
+
+void PlaceOres(uint64 Seed, FChunk&amp; C, int32 baseZ) {
+    for (const auto&amp; V : Veins) {
+        // 청크 단위 시도 횟수 결정
+        FRandomStream R((int32)(HybridVoxel::SplitMix64(Seed ^ (uint64)V.BlockId)));
+        int32 tries = (int32)(V.Frequency * 100.0f); // 단순화
+        for (int32 t=0; t&lt;tries; ++t) {
+            int32 cx = R.RandRange(0, 15);
+            int32 cy = R.RandRange(0, 15);
+            int32 cz = R.RandRange(0, 15);
+            int32 wz = baseZ + cz;
+            if (wz &lt; V.ZMin || wz &gt; V.ZMax) continue;
+            // 클러스터: 중심에서 짧은 워크
+            for (int32 k=0; k&lt;V.ClusterSize; ++k) {
+                int32 ox = FMath::Clamp(cx + R.RandRange(-1,1), 0, 15);
+                int32 oy = FMath::Clamp(cy + R.RandRange(-1,1), 0, 15);
+                int32 oz = FMath::Clamp(cz + R.RandRange(-1,1), 0, 15);
+                BlockId&amp; B = C.Blocks[FChunk::LocalIndex(ox,oy,oz)];
+                if (B == (BlockId)EBlockId::Stone) B = (BlockId)V.BlockId;
+            }
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 동굴 벽이나 채굴 갱도에서 광물 베인이 보임. Gold가 Coal보다 명확히 희귀.</div>
+</div>
+
+<!-- Task 4.5 -->
+<div class="task">
+<h3>Task 4.5 — 식생 (풀, 단순 나무)</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>표면 위에 풀(장식 블록) 또는 나무(4~6칸 Wood + Leaves 군) 스폰. 나무는 청크 경계를 넘을 수 있으므로 다음 Task와 연계.</p>
+<h4>코드</h4>
+<pre><code>struct FPendingEdit { FIntVector WorldBlock; BlockId Id; };
+
+void GenerateVegetation(uint64 Seed, FChunk&amp; C, EBiome B,
+                        int32 baseX, int32 baseY, int32 baseZ,
+                        TArray&lt;FPendingEdit&gt;&amp; OutCrossChunk)
+{
+    if (B == EBiome::Desert || B == EBiome::Tundra) return;
+
+    FRandomStream R((int32)HybridVoxel::SplitMix64(Seed ^ 0xBEE5));
+    int32 treeCount = (B == EBiome::Forest ? 4 : 1);
+    for (int32 t=0; t&lt;treeCount; ++t) {
+        int32 lx = R.RandRange(2, 13);
+        int32 ly = R.RandRange(2, 13);
+        // 표면 z 찾기 (최상단 Grass)
+        int32 sz = -1;
+        for (int32 z=15; z&gt;=0; --z) {
+            if (C.Get(lx, ly, z) == (BlockId)EBlockId::Grass) { sz = z; break; }
+        }
+        if (sz &lt; 0 || sz &gt; 12) continue;
+        // 줄기
+        for (int32 k=1; k&lt;=4; ++k) C.Set(lx, ly, sz+k, (BlockId)EBlockId::Wood);
+        // 잎 (이웃 청크로 넘칠 가능성 → OutCrossChunk로 큐잉)
+        for (int32 dz=4; dz&lt;=5; ++dz)
+        for (int32 dy=-2; dy&lt;=2; ++dy)
+        for (int32 dx=-2; dx&lt;=2; ++dx) {
+            FIntVector W(baseX+lx+dx, baseY+ly+dy, baseZ+sz+dz);
+            // ... 청크 안이면 직접, 밖이면 OutCrossChunk에 push
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · Forest 바이옴에서 나무 군집 보임. 청크 경계 위의 나무도 잎이 매끄럽게 이어짐.</div>
+</div>
+
+<!-- Task 4.6 -->
+<div class="task">
+<h3>Task 4.6 — 이웃 청크 pending edits 큐</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>아직 생성되지 않은 이웃 청크에 "도착하면 이 블록을 덮어쓰라"는 명령을 큐잉.</p>
+<h4>코드</h4>
+<pre><code>// VoxelWorld 내부
+TMap&lt;FIntVector, TArray&lt;FPendingEdit&gt;&gt; PendingForChunk;
+
+void EnqueuePendingFor(const FIntVector&amp; ChunkCoord, const FPendingEdit&amp; E) {
+    PendingForChunk.FindOrAdd(ChunkCoord).Add(E);
+}
+
+// 새 청크 생성 직후
+void ApplyPendingEdits(FChunk&amp; C) {
+    using namespace HybridVoxel;
+    if (auto* List = PendingForChunk.Find(C.Coord)) {
+        for (const auto&amp; E : *List) {
+            FIntVector L = WorldBlockToLocal(E.WorldBlock);
+            C.Set(L.X, L.Y, L.Z, E.Id);
+        }
+        PendingForChunk.Remove(C.Coord);
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 청크 경계에 걸친 나무·구조물(Phase 5) 가지가 빠지지 않음. 청크 로드 순서와 무관.</div>
+</div>
+
+<!-- Task 4.7 -->
+<div class="task">
+<h3>Task 4.7 — 버텍스 컬러 바이옴 틴팅</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>같은 Grass 블록도 바이옴별로 살짝 다른 톤 (정글=짙은 녹, 평원=중간 녹, 사바나=노랑 녹).</p>
+<h4>코드</h4>
+<pre><code>FColor TintFor(EBiome B, BlockId Id) {
+    if (Id != (BlockId)EBlockId::Grass &amp;&amp; Id != (BlockId)EBlockId::Leaves)
+        return FColor::White;
+    switch (B) {
+        case EBiome::Jungle:  return FColor(70, 160, 60);
+        case EBiome::Savanna: return FColor(180, 180, 80);
+        case EBiome::Tundra:  return FColor(200, 230, 220);
+        default:              return FColor(120, 200, 90);
+    }
+}
+
+// 메시 빌드 시 정점 컬러로 push
+const FColor Tint = TintFor(GetBiomeAt(wx,wy), Id);
+Out.Colors.Add(Tint);
+</code></pre>
+<p>마스터 머티리얼에서 BaseColor × VertexColor 로 곱해주면 자동 적용.</p>
+<div class="dod"><strong>DoD</strong> · 바이옴 경계에서 잔디 색 자연스럽게 변화. 한 청크 안에서도 그라데이션.</div>
+</div>
+
+<section>
+<h2>Phase 4 회고</h2>
+<ul>
+  <li>최종 동굴 임계값 / 분포:</li>
+  <li>광물 베인 빈도·클러스터 튜닝 결과:</li>
+  <li>나무 청크 경계 처리 시 발생한 버그:</li>
+</ul>
+</section>
+
+</body>
+</html>

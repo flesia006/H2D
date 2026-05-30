@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Phase 1 — 단일 청크 큐브 메시</title>
+<style>
+body { font-family: -apple-system, "Malgun Gothic", system-ui, sans-serif;
+       max-width: 920px; margin: 32px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+header { border-bottom: 2px solid #1a5fb4; padding-bottom: 10px; margin-bottom: 22px; }
+header h1 { margin: 0 0 4px; color: #1a3a6b; }
+header .meta { color: #666; font-size: 13px; }
+nav.local { font-size: 13px; color: #666; margin: 0 0 18px; }
+nav.local a { color: #1a5fb4; text-decoration: none; }
+h2 { color: #1a5fb4; margin-top: 1.8em; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+.task { background: #f9fafb; border: 1px solid #e5e7eb; border-left: 4px solid #1a5fb4;
+        border-radius: 6px; padding: 14px 18px; margin: 18px 0; }
+.task h3 { margin-top: 0; color: #1a3a6b; }
+.task .meta { color: #888; font-size: 12px; margin-bottom: 8px; }
+.task h4 { color: #444; margin: 0.9em 0 0.3em; font-size: 14px; }
+.dod { background: #eef6ee; border-left: 3px solid #2e7d32; padding: 6px 12px;
+       margin-top: 10px; font-size: 14px; }
+.dod strong { color: #2e7d32; }
+.status { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.s-todo { background: #e5e7eb; color: #444; }
+code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px;
+       font-family: Consolas, monospace; font-size: 13px; color: #c0392b; }
+pre { background: #2b2b2b; padding: 12px 16px; border-radius: 6px;
+      overflow-x: auto; font-family: Consolas, monospace; font-size: 12.5px; line-height: 1.5; }
+pre code, pre code.hljs { background: transparent; padding: 0; color: #a9b7c6; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/androidstudio.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>document.addEventListener('DOMContentLoaded', () => hljs.highlightAll());</script>
+</head>
+<body>
+
+<header>
+  <h1>Phase 1 — 단일 청크 큐브 메시</h1>
+  <div class="meta">예상 1~2주 · Task 8개 · 목표: 한 청크가 화면에 정상 렌더 + 충돌 동작</div>
+</header>
+<nav class="local">← <a href="Index.html">인덱스</a> · 다음: <a href="Phase2_ChunkLoading.html">Phase 2</a></nav>
+
+<section>
+<h2>완료 시 모습</h2>
+<p>고정 데이터(예: 아래 8블록은 Dirt, 위는 Grass)로 채워진 16³ 청크 하나를 레벨에 배치했을 때:</p>
+<ul>
+  <li>면이 외부에서 보이는 부분만 메시로 그려진다 (내부 면 컬링 OK)</li>
+  <li>머티리얼·텍스처가 적용된 큐브로 보인다</li>
+  <li>캐릭터가 위에 올라설 수 있다 (충돌 OK)</li>
+</ul>
+</section>
+
+<!-- Task 1.1 -->
+<div class="task">
+<h3>Task 1.1 — C++ 모듈 <code>HybridVoxel</code> 추가</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>BP 위주 프로젝트에 성능용 C++ 모듈을 새로 만들고 <code>ProceduralMeshComponent</code> 의존성을 건다.</p>
+<h4>내용</h4>
+<ul>
+  <li><code>Source/HybridVoxel/</code> 폴더 생성 (Build.cs, 모듈 cpp/h)</li>
+  <li><code>.uproject</code> 의 <code>Modules</code> 배열에 추가</li>
+  <li>Generate Project Files → 컴파일</li>
+</ul>
+<h4>코드</h4>
+<pre><code>// Source/HybridVoxel/HybridVoxel.Build.cs
+using UnrealBuildTool;
+public class HybridVoxel : ModuleRules {
+    public HybridVoxel(ReadOnlyTargetRules Target) : base(Target) {
+        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+        PublicDependencyModuleNames.AddRange(new[] {
+            "Core", "CoreUObject", "Engine", "InputCore",
+            "ProceduralMeshComponent"
+        });
+    }
+}
+</code></pre>
+<pre><code>// Source/HybridVoxel/HybridVoxel.cpp
+#include "Modules/ModuleManager.h"
+IMPLEMENT_MODULE(FDefaultGameModuleImpl, HybridVoxel);
+</code></pre>
+<pre><code>// TopDownHybrid.uproject (Modules 배열에 추가)
+"Modules": [
+  { "Name": "TopDownHybrid", "Type": "Runtime", "LoadingPhase": "Default" },
+  { "Name": "HybridVoxel",   "Type": "Runtime", "LoadingPhase": "Default" }
+]
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 에디터 기동 시 출력 로그에 모듈 로드 확인. C++ 빌드 0 에러.</div>
+</div>
+
+<!-- Task 1.2 -->
+<div class="task">
+<h3>Task 1.2 — 블록 ID 타입과 enum 정의</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>1바이트 블록 ID 체계 확립. 256종 한계 내에서 enum으로 가독성·디버그 편의 확보.</p>
+<h4>코드</h4>
+<pre><code>// Source/HybridVoxel/Public/VoxelTypes.h
+#pragma once
+#include "CoreMinimal.h"
+
+using BlockId = uint8;
+
+UENUM(BlueprintType)
+enum class EBlockId : uint8 {
+    Air = 0,
+    Stone, Dirt, Grass, Sand, Water,
+    Wood, Leaves,
+    CoalOre, IronOre, GoldOre,
+    Workbench, Bed,
+    Count UMETA(Hidden)
+};
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 다른 클래스에서 <code>EBlockId</code> 사용 가능, BP에서도 enum 검색 시 노출.</div>
+</div>
+
+<!-- Task 1.3 -->
+<div class="task">
+<h3>Task 1.3 — <code>FBlockType</code> + 블록 DataTable</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>블록별 속성(이름, 솔리드/투명, 채굴 시간, 면별 아틀라스 인덱스, 드롭)을 에디터에서 편집 가능하게 한다.</p>
+<h4>코드</h4>
+<pre><code>// Source/HybridVoxel/Public/BlockType.h
+#pragma once
+#include "Engine/DataTable.h"
+#include "VoxelTypes.h"
+#include "BlockType.generated.h"
+
+USTRUCT(BlueprintType)
+struct FBlockType : public FTableRowBase {
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere) FString  Name;
+    UPROPERTY(EditAnywhere) bool     bSolid       = true;
+    UPROPERTY(EditAnywhere) bool     bTransparent = false;
+    UPROPERTY(EditAnywhere) float    Hardness     = 1.0f;
+    // 0:+X 1:-X 2:+Y 3:-Y 4:+Z 5:-Z (atlas tile index)
+    UPROPERTY(EditAnywhere) int32    AtlasIndex[6] = {0,0,0,0,0,0};
+    UPROPERTY(EditAnywhere) EBlockId DropId       = EBlockId::Air;
+};
+</code></pre>
+<pre><code>// 조회 헬퍼 (BlockRegistry.h/cpp)
+class HYBRIDVOXEL_API FBlockRegistry {
+public:
+    static void Initialize(UDataTable* Table);
+    static const FBlockType* Get(EBlockId Id);
+private:
+    static TMap&lt;EBlockId, FBlockType&gt; Cache;
+};
+</code></pre>
+<h4>내용</h4>
+<ul>
+  <li>Content 폴더에 <code>DT_BlockTypes</code> DataTable 생성, FBlockType row 등록</li>
+  <li>게임 시작 시 <code>FBlockRegistry::Initialize</code> 호출 (GameInstance Init에서)</li>
+</ul>
+<div class="dod"><strong>DoD</strong> · 에디터에서 row 추가/수정 가능, 코드에서 <code>FBlockRegistry::Get(EBlockId::Stone)</code> 정상 동작.</div>
+</div>
+
+<!-- Task 1.4 -->
+<div class="task">
+<h3>Task 1.4 — <code>FChunk</code> 데이터 구조</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>16³ 블록 컨테이너 + 인덱싱 헬퍼 + dirty/modified 플래그.</p>
+<h4>코드</h4>
+<pre><code>// Source/HybridVoxel/Public/Chunk.h
+#pragma once
+#include "CoreMinimal.h"
+#include "VoxelTypes.h"
+
+namespace HybridVoxel {
+    constexpr int32 CHUNK_SIZE   = 16;
+    constexpr int32 CHUNK_AREA   = CHUNK_SIZE * CHUNK_SIZE;
+    constexpr int32 CHUNK_VOLUME = CHUNK_AREA * CHUNK_SIZE;
+}
+
+struct HYBRIDVOXEL_API FChunk {
+    FIntVector       Coord = FIntVector::ZeroValue;
+    TArray&lt;BlockId&gt;  Blocks;  // size = CHUNK_VOLUME
+    bool             bDirty    = false;
+    bool             bModified = false;
+
+    FChunk() { Blocks.Init(0, HybridVoxel::CHUNK_VOLUME); }
+
+    static FORCEINLINE int32 LocalIndex(int32 X, int32 Y, int32 Z) {
+        using namespace HybridVoxel;
+        return X + Y * CHUNK_SIZE + Z * CHUNK_AREA;
+    }
+
+    FORCEINLINE BlockId Get(int32 X, int32 Y, int32 Z) const {
+        return Blocks[LocalIndex(X, Y, Z)];
+    }
+    FORCEINLINE void Set(int32 X, int32 Y, int32 Z, BlockId Id) {
+        Blocks[LocalIndex(X, Y, Z)] = Id;
+        bDirty = true; bModified = true;
+    }
+};
+</code></pre>
+<div class="dod"><strong>DoD</strong> · Get/Set/LocalIndex 단순 호출 테스트로 인덱싱 일치 확인.</div>
+</div>
+
+<!-- Task 1.5 -->
+<div class="task">
+<h3>Task 1.5 — 페이스 컬링 메시 빌더</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>청크 데이터 → 정점/인덱스/UV/노멀 버퍼로 변환. 이웃이 투명인 면만 추가.</p>
+<h4>코드</h4>
+<pre><code>// Source/HybridVoxel/Public/ChunkMeshData.h
+struct FChunkMeshData {
+    TArray&lt;FVector&gt;   Vertices;
+    TArray&lt;int32&gt;     Triangles;
+    TArray&lt;FVector&gt;   Normals;
+    TArray&lt;FVector2D&gt; UV0;
+    TArray&lt;FColor&gt;    Colors;       // 바이옴 틴팅 (Phase 4)
+};
+
+namespace HybridVoxel {
+    // 6면 normal, 4정점 오프셋 (CCW), uv 코너 테이블
+    extern const FVector  FaceNormals[6];
+    extern const FVector  FaceVerts[6][4]; // 단위 큐브 기준
+    extern const FIntVector FaceOffsets[6];
+}
+
+HYBRIDVOXEL_API void BuildChunkMesh(const FChunk&amp; Chunk, FChunkMeshData&amp; Out);
+</code></pre>
+<pre><code>// ChunkMesh.cpp (핵심)
+void BuildChunkMesh(const FChunk&amp; C, FChunkMeshData&amp; Out) {
+    using namespace HybridVoxel;
+    const float S = 100.0f; // 블록 한 변 (cm)
+
+    for (int32 z=0; z&lt;CHUNK_SIZE; ++z)
+    for (int32 y=0; y&lt;CHUNK_SIZE; ++y)
+    for (int32 x=0; x&lt;CHUNK_SIZE; ++x) {
+        const BlockId Id = C.Get(x,y,z);
+        const FBlockType* Type = FBlockRegistry::Get((EBlockId)Id);
+        if (!Type || !Type->bSolid) continue;
+
+        for (int32 f=0; f&lt;6; ++f) {
+            FIntVector n = FaceOffsets[f];
+            // 청크 경계 밖은 일단 "투명"으로 간주 (Phase 2에서 이웃 청크 조회로 교체)
+            const bool bNeighborTransparent = [&amp;](){
+                int32 nx=x+n.X, ny=y+n.Y, nz=z+n.Z;
+                if (nx&lt;0||ny&lt;0||nz&lt;0||nx&gt;=CHUNK_SIZE||ny&gt;=CHUNK_SIZE||nz&gt;=CHUNK_SIZE) return true;
+                const FBlockType* NT = FBlockRegistry::Get((EBlockId)C.Get(nx,ny,nz));
+                return !NT || NT->bTransparent || !NT->bSolid;
+            }();
+            if (!bNeighborTransparent) continue;
+
+            const int32 Base = Out.Vertices.Num();
+            const FVector Origin(x*S, y*S, z*S);
+            for (int32 v=0; v&lt;4; ++v) {
+                Out.Vertices.Add(Origin + FaceVerts[f][v] * S);
+                Out.Normals.Add(FaceNormals[f]);
+                Out.Colors.Add(FColor::White);
+            }
+            // UV는 Phase 3 텍스처 아틀라스에서 계산. 일단 0~1
+            Out.UV0.Add({0,0}); Out.UV0.Add({1,0});
+            Out.UV0.Add({1,1}); Out.UV0.Add({0,1});
+
+            Out.Triangles.Add(Base+0); Out.Triangles.Add(Base+1); Out.Triangles.Add(Base+2);
+            Out.Triangles.Add(Base+0); Out.Triangles.Add(Base+2); Out.Triangles.Add(Base+3);
+        }
+    }
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 16³ 풀 청크에서 quad 개수 = 6 × 16 × 16 = 1536 (외곽 면만). 빈 청크는 0 quad.</div>
+</div>
+
+<!-- Task 1.6 -->
+<div class="task">
+<h3>Task 1.6 — <code>AChunkActor</code> (PMC 래퍼)</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>한 청크를 월드에 표현하는 액터. <code>UProceduralMeshComponent</code> 보유 + 메시 적용 API.</p>
+<h4>코드</h4>
+<pre><code>// Source/HybridVoxel/Public/ChunkActor.h
+#pragma once
+#include "GameFramework/Actor.h"
+#include "Chunk.h"
+#include "ChunkMeshData.h"
+#include "ChunkActor.generated.h"
+
+class UProceduralMeshComponent;
+
+UCLASS()
+class HYBRIDVOXEL_API AChunkActor : public AActor {
+    GENERATED_BODY()
+public:
+    AChunkActor();
+
+    UPROPERTY(VisibleAnywhere)
+    UProceduralMeshComponent* Mesh;
+
+    UPROPERTY(EditAnywhere)
+    UMaterialInterface* MasterMaterial = nullptr;
+
+    FIntVector Coord = FIntVector::ZeroValue;
+
+    void ApplyMesh(const FChunkMeshData&amp; D);
+};
+</code></pre>
+<pre><code>// ChunkActor.cpp
+#include "ChunkActor.h"
+#include "ProceduralMeshComponent.h"
+
+AChunkActor::AChunkActor() {
+    PrimaryActorTick.bCanEverTick = false;
+    Mesh = CreateDefaultSubobject&lt;UProceduralMeshComponent&gt;(TEXT("Mesh"));
+    Mesh->bUseAsyncCooking = true;
+    SetRootComponent(Mesh);
+}
+
+void AChunkActor::ApplyMesh(const FChunkMeshData&amp; D) {
+    Mesh->ClearAllMeshSections();
+    Mesh->CreateMeshSection_LinearColor(
+        /*Section*/ 0,
+        D.Vertices, D.Triangles, D.Normals, D.UV0,
+        /*VertexColors*/ TArray&lt;FLinearColor&gt;(),
+        /*Tangents*/ TArray&lt;FProcMeshTangent&gt;(),
+        /*CreateCollision*/ true);
+    if (MasterMaterial) Mesh->SetMaterial(0, MasterMaterial);
+}
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 레벨에 액터 배치 후 <code>ApplyMesh</code> 호출하면 큐브 군이 렌더 + 캐릭터 충돌.</div>
+</div>
+
+<!-- Task 1.7 -->
+<div class="task">
+<h3>Task 1.7 — 마스터 머티리얼 + 임시 텍스처</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>Phase 1에선 텍스처 아틀라스 없이도 시각 확인이 가능해야 함.</p>
+<h4>내용 (에디터 작업)</h4>
+<ul>
+  <li><code>Content/Materials/M_VoxelMaster</code> 생성 (Lit, Two Sided OFF)</li>
+  <li>BaseColor: 임시 단색 또는 임시 텍스처 1개 (16x16 픽셀)</li>
+  <li>나중에 Phase 3에서 아틀라스 + UV 인덱스로 확장 예정</li>
+  <li><code>AChunkActor</code> 의 <code>MasterMaterial</code> 디폴트로 지정</li>
+</ul>
+<div class="dod"><strong>DoD</strong> · 청크 메시가 단색/임시 텍스처로 렌더되어 면 구분이 시각적으로 가능.</div>
+</div>
+
+<!-- Task 1.8 -->
+<div class="task">
+<h3>Task 1.8 — 테스트 맵에서 검증</h3>
+<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<h4>목적</h4>
+<p>Phase 1 결과물을 인간 눈으로 확인.</p>
+<h4>내용</h4>
+<ul>
+  <li><code>Content/Maps/L_VoxelTest</code> 신규 맵</li>
+  <li>BP_VoxelTestSpawner: 시작 시 <code>AChunkActor</code> 1개 스폰, 고정 데이터로 청크 채움
+    <ul>
+      <li>z &lt; 8 : Dirt</li>
+      <li>z = 8 : Grass</li>
+      <li>z &gt;= 9 : Air</li>
+    </ul>
+  </li>
+  <li>기존 Jemie 캐릭터로 위에 걷기 테스트</li>
+</ul>
+<pre><code>// 예: spawner 내부
+AChunkActor* A = GetWorld()->SpawnActor&lt;AChunkActor&gt;(FVector::ZeroVector, FRotator::ZeroRotator);
+FChunk C; C.Coord = {0,0,0};
+for (int z=0; z&lt;8; ++z) for (int y=0; y&lt;16; ++y) for (int x=0; x&lt;16; ++x)
+    C.Set(x,y,z,(BlockId)EBlockId::Dirt);
+for (int y=0; y&lt;16; ++y) for (int x=0; x&lt;16; ++x)
+    C.Set(x,y,8,(BlockId)EBlockId::Grass);
+
+FChunkMeshData M; BuildChunkMesh(C, M);
+A->ApplyMesh(M);
+</code></pre>
+<div class="dod"><strong>DoD</strong> · 잔디 표면 + 흙 단면이 보임, 캐릭터가 위에 올라설 수 있음, 측면 면이 컬링되어 내부가 안 그려짐.</div>
+</div>
+
+<section>
+<h2>Phase 1 회고 (완료 후 채움)</h2>
+<ul>
+  <li>실제 소요 기간:</li>
+  <li>예상과 달랐던 점:</li>
+  <li>Phase 2에 영향 주는 결정:</li>
+</ul>
+</section>
+
+</body>
+</html>
