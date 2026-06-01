@@ -7,6 +7,7 @@
 
 class UProceduralMeshComponent;
 class UMaterialInterface;
+struct FTPChunkMeshData;
 
 UCLASS()
 class TP_ZDHYBRIDTOPDOWNBP_API ATPChunkActor : public AActor
@@ -32,6 +33,9 @@ public:
 
 	// Rebuilds the mesh from the current Chunk and applies it.
 	void RebuildAndApply();
+
+	// Applies a prebuilt mesh (used by ATPVoxelWorld, which meshes with neighbor data).
+	void ApplyMesh(const FTPChunkMeshData& Data);
 
 	// Fills Chunk with a simple test pattern (dirt below, grass on top).
 	void FillTestData();

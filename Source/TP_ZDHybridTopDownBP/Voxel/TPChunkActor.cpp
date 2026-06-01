@@ -49,7 +49,11 @@ void ATPChunkActor::RebuildAndApply()
 {
 	FTPChunkMeshData Data;
 	VoxelMesh::BuildChunkMesh(Chunk, Data);
+	ApplyMesh(Data);
+}
 
+void ATPChunkActor::ApplyMesh(const FTPChunkMeshData& Data)
+{
 	Mesh->ClearAllMeshSections();
 	Mesh->CreateMeshSection_LinearColor(
 		/*SectionIndex*/ 0,

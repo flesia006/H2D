@@ -35,72 +35,90 @@ namespace
 	};
 
 	// If faces render inside-out, flip this to swap triangle winding.
-	// (Phase 1 material is set Two Sided, so this is rarely needed.)
+	// (Material is set Two Sided, so this is rarely needed.)
 	constexpr bool bFlipWinding = false;
-}
 
-void VoxelMesh::BuildChunkMesh(const FTPChunk& C, FTPChunkMeshData& Out)
-{
-	using namespace VoxelConst;
-	Out.Reset();
-
-	for (int32 z = 0; z < ChunkSize; ++z)
-	for (int32 y = 0; y < ChunkSize; ++y)
-	for (int32 x = 0; x < ChunkSize; ++x)
+	// Sampler returns the block id for any local coord in [-1, ChunkSize]
+	// (the chunk's own cells plus the 1-block apron used for face culling).
+	void BuildImpl(FTPChunkMeshData& Out, const TFunctionRef<BlockId(int32, int32, int32)>& Sample)
 	{
-		const FTPBlockType& Type = FTPBlockRegistry::Get(static_cast<ETPBlockId>(C.Get(x, y, z)));
-		if (!Type.bSolid)
+		using namespace VoxelConst;
+		Out.Reset();
+
+		for (int32 z = 0; z < ChunkSize; ++z)
+		for (int32 y = 0; y < ChunkSize; ++y)
+		for (int32 x = 0; x < ChunkSize; ++x)
 		{
-			continue;
-		}
-
-		for (int32 f = 0; f < 6; ++f)
-		{
-			const FIntVector N = FaceDir[f];
-			const int32 nx = x + N.X, ny = y + N.Y, nz = z + N.Z;
-
-			bool bNeighborTransparent;
-			if (nx < 0 || ny < 0 || nz < 0 || nx >= ChunkSize || ny >= ChunkSize || nz >= ChunkSize)
-			{
-				bNeighborTransparent = true; // chunk border (Phase 2: query neighbor chunk)
-			}
-			else
-			{
-				const FTPBlockType& NT = FTPBlockRegistry::Get(static_cast<ETPBlockId>(C.Get(nx, ny, nz)));
-				bNeighborTransparent = !NT.bSolid || NT.bTransparent;
-			}
-
-			if (!bNeighborTransparent)
+			const FTPBlockType& Type = FTPBlockRegistry::Get(static_cast<ETPBlockId>(Sample(x, y, z)));
+			if (!Type.bSolid)
 			{
 				continue;
 			}
 
-			const int32 Base = Out.Vertices.Num();
-			const FVector Origin(x * BlockSize, y * BlockSize, z * BlockSize);
-			const FLinearColor Col(Type.Color);
-
-			for (int32 v = 0; v < 4; ++v)
+			for (int32 f = 0; f < 6; ++f)
 			{
-				Out.Vertices.Add(Origin + FaceVerts[f][v] * BlockSize);
-				Out.Normals.Add(FaceNormal[f]);
-				Out.Colors.Add(Col);
-			}
+				const FIntVector N = FaceDir[f];
+				const FTPBlockType& NT = FTPBlockRegistry::Get(
+					static_cast<ETPBlockId>(Sample(x + N.X, y + N.Y, z + N.Z)));
 
-			Out.UV0.Add(FVector2D(0, 0));
-			Out.UV0.Add(FVector2D(1, 0));
-			Out.UV0.Add(FVector2D(1, 1));
-			Out.UV0.Add(FVector2D(0, 1));
+				const bool bNeighborTransparent = !NT.bSolid || NT.bTransparent;
+				if (!bNeighborTransparent)
+				{
+					continue;
+				}
 
-			if (!bFlipWinding)
-			{
-				Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 1); Out.Triangles.Add(Base + 2);
-				Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 2); Out.Triangles.Add(Base + 3);
-			}
-			else
-			{
-				Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 2); Out.Triangles.Add(Base + 1);
-				Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 3); Out.Triangles.Add(Base + 2);
+				const int32 Base = Out.Vertices.Num();
+				const FVector Origin(x * BlockSize, y * BlockSize, z * BlockSize);
+				const FLinearColor Col(Type.Color);
+
+				for (int32 v = 0; v < 4; ++v)
+				{
+					Out.Vertices.Add(Origin + FaceVerts[f][v] * BlockSize);
+					Out.Normals.Add(FaceNormal[f]);
+					Out.Colors.Add(Col);
+				}
+
+				Out.UV0.Add(FVector2D(0, 0));
+				Out.UV0.Add(FVector2D(1, 0));
+				Out.UV0.Add(FVector2D(1, 1));
+				Out.UV0.Add(FVector2D(0, 1));
+
+				if (!bFlipWinding)
+				{
+					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 1); Out.Triangles.Add(Base + 2);
+					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 2); Out.Triangles.Add(Base + 3);
+				}
+				else
+				{
+					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 2); Out.Triangles.Add(Base + 1);
+					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 3); Out.Triangles.Add(Base + 2);
+				}
 			}
 		}
 	}
+
+	FORCEINLINE bool InRange(int32 V)
+	{
+		return V >= 0 && V < VoxelConst::ChunkSize;
+	}
+}
+
+void VoxelMesh::BuildChunkMesh(const FTPChunk& C, FTPChunkMeshData& Out)
+{
+	BuildImpl(Out, [&C](int32 X, int32 Y, int32 Z) -> BlockId
+	{
+		if (InRange(X) && InRange(Y) && InRange(Z))
+		{
+			return C.Get(X, Y, Z);
+		}
+		return static_cast<BlockId>(ETPBlockId::Air); // border = exposed
+	});
+}
+
+void VoxelMesh::BuildChunkMeshPadded(const TArray<BlockId>& Padded, FTPChunkMeshData& Out)
+{
+	BuildImpl(Out, [&Padded](int32 X, int32 Y, int32 Z) -> BlockId
+	{
+		return Padded[PaddedIndex(X, Y, Z)];
+	});
 }
