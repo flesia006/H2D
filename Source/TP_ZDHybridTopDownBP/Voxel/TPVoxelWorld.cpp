@@ -4,6 +4,7 @@
 #include "VoxelMesh.h"
 #include "ChunkMeshData.h"
 #include "ChunkGenTask.h"
+#include "TerrainGen.h"
 #include "BlockType.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -19,6 +20,9 @@ void ATPVoxelWorld::BeginPlay()
 	// Prime the block registry on the game thread so worker meshing never
 	// races its lazy initialization.
 	FTPBlockRegistry::Get(ETPBlockId::Air);
+
+	// Build the immutable terrain generator once; worker tasks share it read-only.
+	Terrain = MakeShared<FTPTerrainGen, ESPMode::ThreadSafe>(Seed, HeightMin, HeightMax);
 
 	LastCenterChunk = FIntVector(MAX_int32); // force initial fill
 }
@@ -40,6 +44,14 @@ FIntVector ATPVoxelWorld::GetCenterChunk() const
 		}
 	}
 	return VoxelCoord::WorldBlockToChunk(VoxelCoord::WorldPosToBlock(P));
+}
+
+void ATPVoxelWorld::VerticalChunkRange(int32& OutMin, int32& OutMax) const
+{
+	// Load a fixed vertical band that fully covers the terrain height range,
+	// regardless of where the player is vertically (heightmap world, no caves yet).
+	OutMin = VoxelCoord::FloorDiv(0, VoxelConst::ChunkSize) - 1;          // one solid floor chunk
+	OutMax = VoxelCoord::FloorDiv(HeightMax, VoxelConst::ChunkSize);
 }
 
 void ATPVoxelWorld::Tick(float DeltaSeconds)
@@ -65,15 +77,16 @@ void ATPVoxelWorld::RefreshLoadQueue(const FIntVector& Center)
 	LoadQueue.Reset();
 
 	const int32 R = LoadRadiusChunks;
-	const int32 RV = LoadRadiusVertical;
+	int32 VMin, VMax;
+	VerticalChunkRange(VMin, VMax);
 
 	TArray<FIntVector> Wanted;
-	Wanted.Reserve((2 * R + 1) * (2 * R + 1) * (2 * RV + 1));
-	for (int32 dz = -RV; dz <= RV; ++dz)
-	for (int32 dy = -R;  dy <= R;  ++dy)
-	for (int32 dx = -R;  dx <= R;  ++dx)
+	Wanted.Reserve((2 * R + 1) * (2 * R + 1) * (VMax - VMin + 1));
+	for (int32 cz = VMin; cz <= VMax; ++cz)
+	for (int32 dy = -R;   dy <= R;    ++dy)
+	for (int32 dx = -R;   dx <= R;    ++dx)
 	{
-		Wanted.Add(Center + FIntVector(dx, dy, dz));
+		Wanted.Add(FIntVector(Center.X + dx, Center.Y + dy, cz));
 	}
 
 	Wanted.Sort([&Center](const FIntVector& A, const FIntVector& B)
@@ -96,13 +109,14 @@ void ATPVoxelWorld::RefreshLoadQueue(const FIntVector& Center)
 void ATPVoxelWorld::UnloadFarFrom(const FIntVector& Center)
 {
 	const int32 R = LoadRadiusChunks + 1;          // +1 hysteresis
-	const int32 RV = LoadRadiusVertical + 1;
+	int32 VMin, VMax;
+	VerticalChunkRange(VMin, VMax);
 
 	TArray<FIntVector> ToRemove;
 	for (const auto& KV : Chunks)
 	{
 		const FIntVector D = KV.Key - Center;
-		if (FMath::Abs(D.X) > R || FMath::Abs(D.Y) > R || FMath::Abs(D.Z) > RV)
+		if (FMath::Abs(D.X) > R || FMath::Abs(D.Y) > R || KV.Key.Z < VMin || KV.Key.Z > VMax)
 		{
 			ToRemove.Add(KV.Key);
 		}
@@ -135,7 +149,7 @@ void ATPVoxelWorld::KickGenTasks()
 			continue;
 		}
 
-		FAsyncTask<FChunkGenTask>* Task = new FAsyncTask<FChunkGenTask>(C, SurfaceZ);
+		FAsyncTask<FChunkGenTask>* Task = new FAsyncTask<FChunkGenTask>(C, Terrain);
 		Task->StartBackgroundTask();
 		GenTasks.Add(C, Task);
 	}

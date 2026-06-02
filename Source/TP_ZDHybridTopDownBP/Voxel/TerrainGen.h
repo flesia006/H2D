@@ -1,0 +1,26 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "VoxelTypes.h"
+#include "Perlin.h"
+
+// Seeded heightmap terrain. Built once on the game thread, then shared
+// read-only across worker generation tasks (immutable -> thread-safe).
+class FTPTerrainGen
+{
+public:
+	FTPTerrainGen(int64 Seed, int32 InHeightMin, int32 InHeightMax);
+
+	// World Z of the surface (grass) column at world block (Wx, Wy).
+	int32 SurfaceHeight(int32 Wx, int32 Wy) const;
+
+	// Fills a chunk's block array (size ChunkVolume) for the given chunk coord.
+	void GenerateChunk(const FIntVector& Coord, TArray<BlockId>& OutBlocks) const;
+
+private:
+	FPerlin Continent;
+	FPerlin Hill;
+	FPerlin Detail;
+	int32 HeightMin;
+	int32 HeightMax;
+};

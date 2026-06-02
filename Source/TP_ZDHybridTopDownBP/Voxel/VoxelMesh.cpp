@@ -2,6 +2,7 @@
 #include "Chunk.h"
 #include "ChunkMeshData.h"
 #include "BlockType.h"
+#include "VoxelAtlas.h"
 
 namespace
 {
@@ -78,10 +79,12 @@ namespace
 					Out.Colors.Add(Col);
 				}
 
-				Out.UV0.Add(FVector2D(0, 0));
-				Out.UV0.Add(FVector2D(1, 0));
-				Out.UV0.Add(FVector2D(1, 1));
-				Out.UV0.Add(FVector2D(0, 1));
+				FVector2D FaceUV[4];
+				VoxelAtlas::TileUV(Type.AtlasIndex[f], FaceUV);
+				Out.UV0.Add(FaceUV[0]);
+				Out.UV0.Add(FaceUV[1]);
+				Out.UV0.Add(FaceUV[2]);
+				Out.UV0.Add(FaceUV[3]);
 
 				if (!bFlipWinding)
 				{

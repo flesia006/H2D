@@ -10,7 +10,10 @@ struct FTPBlockType
 	const TCHAR* Name = TEXT("Air");
 	bool   bSolid       = false; // participates in collision/meshing
 	bool   bTransparent = true;  // neighbor of a transparent block still draws its face
-	FColor Color        = FColor::White; // Phase 1 vertex color (stand-in for textures)
+	FColor Color        = FColor::White; // vertex color (fallback when no atlas)
+
+	// Atlas tile index per face: 0:+X 1:-X 2:+Y 3:-Y 4:+Z(top) 5:-Z(bottom).
+	int32  AtlasIndex[6] = { 0, 0, 0, 0, 0, 0 };
 };
 
 // Lazy-initialized, code-defined block table.

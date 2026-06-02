@@ -6,16 +6,17 @@
 #include "Chunk.h"
 #include "ChunkMeshData.h"
 #include "VoxelMesh.h"
+#include "TerrainGen.h"
 
-// Generates a chunk's block data on a worker thread (flat world for now;
-// Phase 3 replaces the fill with seeded noise). Touches no shared state.
+// Generates a chunk's block data on a worker thread using the shared, immutable
+// seeded terrain generator. Touches no mutable shared state.
 class FChunkGenTask : public FNonAbandonableTask
 {
 public:
 	friend class FAsyncTask<FChunkGenTask>;
 
-	FChunkGenTask(FIntVector InCoord, int32 InSurfaceZ)
-		: Coord(InCoord), SurfaceZ(InSurfaceZ)
+	FChunkGenTask(FIntVector InCoord, TSharedPtr<const FTPTerrainGen, ESPMode::ThreadSafe> InGen)
+		: Coord(InCoord), Gen(MoveTemp(InGen))
 	{
 	}
 
@@ -24,31 +25,7 @@ public:
 
 	void DoWork()
 	{
-		using namespace VoxelConst;
-		Blocks.Init(static_cast<BlockId>(ETPBlockId::Air), ChunkVolume);
-
-		for (int32 z = 0; z < ChunkSize; ++z)
-		{
-			const int32 Wz = Coord.Z * ChunkSize + z;
-
-			ETPBlockId Block;
-			if (Wz > SurfaceZ)          Block = ETPBlockId::Air;
-			else if (Wz == SurfaceZ)    Block = ETPBlockId::Grass;
-			else if (Wz > SurfaceZ - 4) Block = ETPBlockId::Dirt;
-			else                        Block = ETPBlockId::Stone;
-
-			if (Block == ETPBlockId::Air)
-			{
-				continue;
-			}
-
-			const BlockId Id = static_cast<BlockId>(Block);
-			for (int32 y = 0; y < ChunkSize; ++y)
-			for (int32 x = 0; x < ChunkSize; ++x)
-			{
-				Blocks[FTPChunk::Index(x, y, z)] = Id;
-			}
-		}
+		Gen->GenerateChunk(Coord, Blocks);
 	}
 
 	FORCEINLINE TStatId GetStatId() const
@@ -58,7 +35,7 @@ public:
 
 private:
 	FIntVector Coord;
-	int32 SurfaceZ;
+	TSharedPtr<const FTPTerrainGen, ESPMode::ThreadSafe> Gen;
 };
 
 // Meshes a chunk from a self-contained padded snapshot on a worker thread.

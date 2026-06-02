@@ -10,6 +10,7 @@ class ATPChunkActor;
 class UMaterialInterface;
 class FChunkGenTask;
 class FChunkMeshTask;
+class FTPTerrainGen;
 
 // Streams voxel chunks around a tracked center (player pawn or this actor).
 // Generation and meshing run on worker threads; the game thread only builds
@@ -29,10 +30,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Voxel", meta = (ClampMin = "1"))
 	int32 LoadRadiusChunks = 3;
 
-	// Vertical load radius in chunks (flat world needs little).
-	UPROPERTY(EditAnywhere, Category = "Voxel", meta = (ClampMin = "0"))
-	int32 LoadRadiusVertical = 1;
-
 	// Spawned chunk actors use this class (defaults to ATPChunkActor).
 	UPROPERTY(EditAnywhere, Category = "Voxel")
 	TSubclassOf<ATPChunkActor> ChunkActorClass;
@@ -49,9 +46,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Voxel", meta = (ClampMin = "1"))
 	int32 MeshKicksPerTick = 4;
 
-	// World Z of the topmost solid layer (grass surface) in the flat world.
+	// Terrain surface height range, in world blocks. Controls the loaded
+	// vertical chunk band, so keep the span modest.
 	UPROPERTY(EditAnywhere, Category = "Voxel")
-	int32 SurfaceZ = 7;
+	int32 HeightMin = 6;
+
+	UPROPERTY(EditAnywhere, Category = "Voxel")
+	int32 HeightMax = 26;
 
 	// Follow the local player pawn; otherwise center on this actor's location.
 	UPROPERTY(EditAnywhere, Category = "Voxel")
@@ -87,7 +88,10 @@ private:
 	TArray<FIntVector> LoadQueue;          // nearest-first
 	FIntVector LastCenterChunk = FIntVector(MAX_int32);
 
+	TSharedPtr<FTPTerrainGen, ESPMode::ThreadSafe> Terrain;
+
 	FIntVector GetCenterChunk() const;
+	void VerticalChunkRange(int32& OutMin, int32& OutMax) const;
 	void RefreshLoadQueue(const FIntVector& Center);
 	void UnloadFarFrom(const FIntVector& Center);
 

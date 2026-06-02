@@ -1,4 +1,5 @@
 #include "BlockType.h"
+#include "VoxelAtlas.h"
 
 TArray<FTPBlockType> FTPBlockRegistry::Types;
 bool FTPBlockRegistry::bInitialized = false;
@@ -32,6 +33,24 @@ void FTPBlockRegistry::EnsureInit()
 	Define(ETPBlockId::Water,  TEXT("Water"),  false, true,  FColor(60, 110, 200));
 	Define(ETPBlockId::Wood,   TEXT("Wood"),   true,  false, FColor(110, 80, 50));
 	Define(ETPBlockId::Leaves, TEXT("Leaves"), true,  false, FColor(70, 130, 60));
+
+	// Atlas tiles. SetTiles(side, top, bottom); most blocks use one tile for all faces.
+	auto SetTiles = [](ETPBlockId Id, int32 Side, int32 Top, int32 Bottom)
+	{
+		FTPBlockType& T = FTPBlockRegistry::Types[static_cast<int32>(Id)];
+		T.AtlasIndex[0] = T.AtlasIndex[1] = T.AtlasIndex[2] = T.AtlasIndex[3] = Side;
+		T.AtlasIndex[4] = Top;
+		T.AtlasIndex[5] = Bottom;
+	};
+
+	using namespace VoxelAtlas;
+	SetTiles(ETPBlockId::Stone,  Stone,     Stone,    Stone);
+	SetTiles(ETPBlockId::Dirt,   Dirt,      Dirt,     Dirt);
+	SetTiles(ETPBlockId::Grass,  GrassSide, GrassTop, Dirt);   // green top, dirty sides
+	SetTiles(ETPBlockId::Sand,   Sand,      Sand,     Sand);
+	SetTiles(ETPBlockId::Water,  Water,     Water,    Water);
+	SetTiles(ETPBlockId::Wood,   Wood,      Wood,     Wood);
+	SetTiles(ETPBlockId::Leaves, Leaves,    Leaves,   Leaves);
 }
 
 const FTPBlockType& FTPBlockRegistry::Get(ETPBlockId Id)
