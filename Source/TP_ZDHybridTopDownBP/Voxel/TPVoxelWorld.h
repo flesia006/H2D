@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "Async/AsyncWork.h"
 #include "Chunk.h"
+#include "VoxelEdits.h"
 #include "TPVoxelWorld.generated.h"
 
 class ATPChunkActor;
@@ -85,6 +86,9 @@ private:
 	TMap<FIntVector, FAsyncTask<FChunkGenTask>*>  GenTasks;
 	TMap<FIntVector, FAsyncTask<FChunkMeshTask>*> MeshTasks;
 
+	// Edits destined for chunks not yet generated (e.g. tree leaves from a neighbor).
+	TMap<FIntVector, TArray<FPendingEdit>> PendingForChunk;
+
 	TArray<FIntVector> LoadQueue;          // nearest-first
 	FIntVector LastCenterChunk = FIntVector(MAX_int32);
 
@@ -105,4 +109,7 @@ private:
 	void MarkNeighborsDirty(const FIntVector& Coord);
 	void CancelTasksAt(const FIntVector& Coord);
 	void DrainAllTasks();
+
+	void RouteCrossEdit(const FPendingEdit& Edit);
+	static void ApplyEdit(FTPChunk& Chunk, const FPendingEdit& Edit);
 };

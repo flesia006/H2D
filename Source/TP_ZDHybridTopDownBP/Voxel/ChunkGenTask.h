@@ -20,12 +20,13 @@ public:
 	{
 	}
 
-	// Output: filled by DoWork, moved out on the game thread.
+	// Outputs: filled by DoWork, consumed on the game thread.
 	TArray<BlockId> Blocks;
+	TArray<FPendingEdit> CrossEdits; // blocks that land in neighbor chunks
 
 	void DoWork()
 	{
-		Gen->GenerateChunk(Coord, Blocks);
+		Gen->GenerateChunk(Coord, Blocks, CrossEdits);
 	}
 
 	FORCEINLINE TStatId GetStatId() const

@@ -33,6 +33,9 @@ void FTPBlockRegistry::EnsureInit()
 	Define(ETPBlockId::Water,  TEXT("Water"),  false, true,  FColor(60, 110, 200));
 	Define(ETPBlockId::Wood,   TEXT("Wood"),   true,  false, FColor(110, 80, 50));
 	Define(ETPBlockId::Leaves, TEXT("Leaves"), true,  false, FColor(70, 130, 60));
+	Define(ETPBlockId::CoalOre, TEXT("CoalOre"), true, false, FColor(60, 60, 60));
+	Define(ETPBlockId::IronOre, TEXT("IronOre"), true, false, FColor(180, 140, 110));
+	Define(ETPBlockId::GoldOre, TEXT("GoldOre"), true, false, FColor(220, 190, 70));
 
 	// Atlas tiles. SetTiles(side, top, bottom); most blocks use one tile for all faces.
 	auto SetTiles = [](ETPBlockId Id, int32 Side, int32 Top, int32 Bottom)
@@ -51,6 +54,9 @@ void FTPBlockRegistry::EnsureInit()
 	SetTiles(ETPBlockId::Water,  Water,     Water,    Water);
 	SetTiles(ETPBlockId::Wood,   Wood,      Wood,     Wood);
 	SetTiles(ETPBlockId::Leaves, Leaves,    Leaves,   Leaves);
+	SetTiles(ETPBlockId::CoalOre, CoalOre,  CoalOre,  CoalOre);
+	SetTiles(ETPBlockId::IronOre, IronOre,  IronOre,  IronOre);
+	SetTiles(ETPBlockId::GoldOre, GoldOre,  GoldOre,  GoldOre);
 }
 
 const FTPBlockType& FTPBlockRegistry::Get(ETPBlockId Id)

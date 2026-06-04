@@ -15,6 +15,9 @@ enum class ETPBlockId : uint8
 	Water,
 	Wood,
 	Leaves,
+	CoalOre,
+	IronOre,
+	GoldOre,
 	Count
 };
 

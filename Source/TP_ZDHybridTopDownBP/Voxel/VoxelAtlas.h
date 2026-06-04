@@ -20,6 +20,9 @@ namespace VoxelAtlas
 		Wood      = 5,
 		Leaves    = 6,
 		Water     = 7,
+		CoalOre   = 8,
+		IronOre   = 9,
+		GoldOre   = 10,
 	};
 
 	// Fills a face's 4 UVs for the given tile, ordered to match the mesher's

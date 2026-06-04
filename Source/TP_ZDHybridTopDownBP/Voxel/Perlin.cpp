@@ -63,3 +63,47 @@ float FPerlin::Noise2D(float X, float Y) const
 
 	return Lerp(X1, X2, V); // ~[-1, 1]
 }
+
+float FPerlin::Grad3(int32 Hash, float X, float Y, float Z)
+{
+	const int32 H = Hash & 15;
+	const float U = H < 8 ? X : Y;
+	const float V = H < 4 ? Y : ((H == 12 || H == 14) ? X : Z);
+	return ((H & 1) ? -U : U) + ((H & 2) ? -V : V);
+}
+
+float FPerlin::Noise3D(float X, float Y, float Z) const
+{
+	const int32 Xi = FMath::FloorToInt(X) & 255;
+	const int32 Yi = FMath::FloorToInt(Y) & 255;
+	const int32 Zi = FMath::FloorToInt(Z) & 255;
+
+	const float Xf = X - FMath::FloorToFloat(X);
+	const float Yf = Y - FMath::FloorToFloat(Y);
+	const float Zf = Z - FMath::FloorToFloat(Z);
+
+	const float U = Fade(Xf);
+	const float V = Fade(Yf);
+	const float W = Fade(Zf);
+
+	const int32 A  = P[Xi]     + Yi;
+	const int32 AA = P[A]      + Zi;
+	const int32 AB = P[A + 1]  + Zi;
+	const int32 B  = P[Xi + 1] + Yi;
+	const int32 BA = P[B]      + Zi;
+	const int32 BB = P[B + 1]  + Zi;
+
+	const float Y1 = Lerp(
+		Lerp(Grad3(P[AA],     Xf,       Yf,       Zf),
+		     Grad3(P[BA],     Xf - 1.f, Yf,       Zf), U),
+		Lerp(Grad3(P[AB],     Xf,       Yf - 1.f, Zf),
+		     Grad3(P[BB],     Xf - 1.f, Yf - 1.f, Zf), U), V);
+
+	const float Y2 = Lerp(
+		Lerp(Grad3(P[AA + 1], Xf,       Yf,       Zf - 1.f),
+		     Grad3(P[BA + 1], Xf - 1.f, Yf,       Zf - 1.f), U),
+		Lerp(Grad3(P[AB + 1], Xf,       Yf - 1.f, Zf - 1.f),
+		     Grad3(P[BB + 1], Xf - 1.f, Yf - 1.f, Zf - 1.f), U), V);
+
+	return Lerp(Y1, Y2, W); // ~[-1, 1]
+}

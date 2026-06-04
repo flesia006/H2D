@@ -135,6 +135,16 @@ void ATPVoxelWorld::UnloadFarFrom(const FIntVector& Center)
 		}
 		Chunks.Remove(C);
 	}
+
+	// Drop pending edits aimed at chunks that are now far away and unlikely to load.
+	for (auto It = PendingForChunk.CreateIterator(); It; ++It)
+	{
+		const FIntVector D = It.Key() - Center;
+		if (FMath::Abs(D.X) > R || FMath::Abs(D.Y) > R || It.Key().Z < VMin || It.Key().Z > VMax)
+		{
+			It.RemoveCurrent();
+		}
+	}
 }
 
 void ATPVoxelWorld::KickGenTasks()
@@ -175,7 +185,24 @@ void ATPVoxelWorld::CollectGenTasks()
 		Sp->Coord = C;
 		Sp->Blocks = MoveTemp(Task->GetTask().Blocks);
 		Sp->bDirty = true;
+
+		// Apply edits that earlier-generated neighbors queued for this chunk.
+		if (TArray<FPendingEdit>* List = PendingForChunk.Find(C))
+		{
+			for (const FPendingEdit& E : *List)
+			{
+				ApplyEdit(*Sp, E);
+			}
+			PendingForChunk.Remove(C);
+		}
+
 		Chunks.Add(C, Sp);
+
+		// Route this chunk's own cross-chunk edits (tree parts spilling outward).
+		for (const FPendingEdit& E : Task->GetTask().CrossEdits)
+		{
+			RouteCrossEdit(E);
+		}
 
 		// Existing neighbors may now expose/hide border faces.
 		MarkNeighborsDirty(C);
@@ -284,6 +311,30 @@ ATPChunkActor* ATPVoxelWorld::EnsureActor(const FIntVector& Coord)
 
 	Actors.Add(Coord, Spawned);
 	return Spawned;
+}
+
+void ATPVoxelWorld::RouteCrossEdit(const FPendingEdit& Edit)
+{
+	const FIntVector Cc = VoxelCoord::WorldBlockToChunk(Edit.WorldBlock);
+	if (TSharedPtr<FTPChunk>* Found = Chunks.Find(Cc))
+	{
+		ApplyEdit(**Found, Edit); // target already loaded -> apply + remesh
+	}
+	else
+	{
+		PendingForChunk.FindOrAdd(Cc).Add(Edit); // apply when it generates
+	}
+}
+
+void ATPVoxelWorld::ApplyEdit(FTPChunk& Chunk, const FPendingEdit& Edit)
+{
+	const FIntVector L = VoxelCoord::WorldBlockToLocal(Edit.WorldBlock);
+	const int32 Idx = FTPChunk::Index(L.X, L.Y, L.Z);
+	if (Chunk.Blocks[Idx] == static_cast<BlockId>(ETPBlockId::Air))
+	{
+		Chunk.Blocks[Idx] = Edit.Block;
+		Chunk.bDirty = true; // generated vegetation, not a user edit -> no bModified
+	}
 }
 
 void ATPVoxelWorld::MarkNeighborsDirty(const FIntVector& Coord)
