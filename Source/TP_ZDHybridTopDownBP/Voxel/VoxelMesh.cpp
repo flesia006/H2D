@@ -35,10 +35,6 @@ namespace
 		{ FVector(0, 1, 0), FVector(1, 1, 0), FVector(1, 0, 0), FVector(0, 0, 0) }
 	};
 
-	// If faces render inside-out, flip this to swap triangle winding.
-	// (Material is set Two Sided, so this is rarely needed.)
-	constexpr bool bFlipWinding = false;
-
 	// Sampler returns the block id for any local coord in [-1, ChunkSize]
 	// (the chunk's own cells plus the 1-block apron used for face culling).
 	void BuildImpl(FTPChunkMeshData& Out, const TFunctionRef<BlockId(int32, int32, int32)>& Sample)
@@ -86,16 +82,10 @@ namespace
 				Out.UV0.Add(FaceUV[2]);
 				Out.UV0.Add(FaceUV[3]);
 
-				if (!bFlipWinding)
-				{
-					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 1); Out.Triangles.Add(Base + 2);
-					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 2); Out.Triangles.Add(Base + 3);
-				}
-				else
-				{
-					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 2); Out.Triangles.Add(Base + 1);
-					Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 3); Out.Triangles.Add(Base + 2);
-				}
+				// FaceVerts are CCW seen from outside; UE treats CW-from-front as
+				// front-facing, so emit reversed winding for correct outward faces.
+				Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 2); Out.Triangles.Add(Base + 1);
+				Out.Triangles.Add(Base + 0); Out.Triangles.Add(Base + 3); Out.Triangles.Add(Base + 2);
 			}
 		}
 	}
