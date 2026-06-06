@@ -104,7 +104,8 @@ private:
 	void KickMeshTasks();
 	void CollectMeshTasks();
 
-	TArray<BlockId> BuildPaddedSnapshot(const FIntVector& Coord) const;
+	void BuildSnapshot(const FIntVector& Coord,
+		TArray<BlockId>& OutPadded, TArray<FColor>& OutColumnTint) const;
 	ATPChunkActor* EnsureActor(const FIntVector& Coord);
 	void MarkNeighborsDirty(const FIntVector& Coord);
 	void CancelTasksAt(const FIntVector& Coord);

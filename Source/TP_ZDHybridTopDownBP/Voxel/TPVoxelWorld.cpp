@@ -227,8 +227,11 @@ void ATPVoxelWorld::KickMeshTasks()
 
 		KV.Value->bDirty = false;
 
-		TArray<BlockId> Padded = BuildPaddedSnapshot(KV.Key);
-		FAsyncTask<FChunkMeshTask>* Task = new FAsyncTask<FChunkMeshTask>(MoveTemp(Padded));
+		TArray<BlockId> Padded;
+		TArray<FColor> ColumnTint;
+		BuildSnapshot(KV.Key, Padded, ColumnTint);
+		FAsyncTask<FChunkMeshTask>* Task =
+			new FAsyncTask<FChunkMeshTask>(MoveTemp(Padded), MoveTemp(ColumnTint));
 		Task->StartBackgroundTask();
 		MeshTasks.Add(KV.Key, Task);
 		--Budget;
@@ -263,13 +266,12 @@ void ATPVoxelWorld::CollectMeshTasks()
 	}
 }
 
-TArray<BlockId> ATPVoxelWorld::BuildPaddedSnapshot(const FIntVector& Coord) const
+void ATPVoxelWorld::BuildSnapshot(const FIntVector& Coord,
+	TArray<BlockId>& OutPadded, TArray<FColor>& OutColumnTint) const
 {
 	using namespace VoxelConst;
 
-	TArray<BlockId> Pad;
-	Pad.SetNumUninitialized(VoxelMesh::PaddedVolume);
-
+	OutPadded.SetNumUninitialized(VoxelMesh::PaddedVolume);
 	for (int32 z = -1; z <= ChunkSize; ++z)
 	for (int32 y = -1; y <= ChunkSize; ++y)
 	for (int32 x = -1; x <= ChunkSize; ++x)
@@ -278,10 +280,19 @@ TArray<BlockId> ATPVoxelWorld::BuildPaddedSnapshot(const FIntVector& Coord) cons
 			Coord.X * ChunkSize + x,
 			Coord.Y * ChunkSize + y,
 			Coord.Z * ChunkSize + z);
-		Pad[VoxelMesh::PaddedIndex(x, y, z)] = GetBlockWorld(Wb);
+		OutPadded[VoxelMesh::PaddedIndex(x, y, z)] = GetBlockWorld(Wb);
 	}
 
-	return Pad;
+	// Per-column biome tint for this chunk's own 16x16 footprint.
+	OutColumnTint.SetNumUninitialized(ChunkArea);
+	for (int32 y = 0; y < ChunkSize; ++y)
+	for (int32 x = 0; x < ChunkSize; ++x)
+	{
+		const FColor Tint = Terrain.IsValid()
+			? Terrain->BiomeTintAt(Coord.X * ChunkSize + x, Coord.Y * ChunkSize + y)
+			: FColor::White;
+		OutColumnTint[x + y * ChunkSize] = Tint;
+	}
 }
 
 ATPChunkActor* ATPVoxelWorld::EnsureActor(const FIntVector& Coord)

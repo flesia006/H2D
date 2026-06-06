@@ -38,6 +38,23 @@ namespace
 		return static_cast<EBiome>(T * 3 + H);
 	}
 
+	// Multiplicative vertex tint for grass/leaves per biome (white = unchanged).
+	FColor TintFor(EBiome B)
+	{
+		switch (B)
+		{
+			case EBiome::Jungle:    return FColor(150, 230, 130);
+			case EBiome::Swamp:     return FColor(175, 215, 150);
+			case EBiome::Savanna:   return FColor(235, 225, 140);
+			case EBiome::Desert:    return FColor(235, 225, 150);
+			case EBiome::Forest:    return FColor(205, 255, 180);
+			case EBiome::Taiga:     return FColor(200, 235, 200);
+			case EBiome::Tundra:    return FColor(220, 245, 235);
+			case EBiome::SnowSwamp: return FColor(210, 240, 220);
+			default:                return FColor::White; // Plains
+		}
+	}
+
 	// Surface block per biome. (Snow biomes reuse Grass until a Snow block exists.)
 	ETPBlockId SurfaceBlockFor(EBiome B)
 	{
@@ -114,6 +131,13 @@ int32 FTPTerrainGen::SurfaceHeight(int32 Wx, int32 Wy) const
 
 	const float U = FMath::Clamp((C + H + D) * 0.5f + 0.5f, 0.f, 1.f);
 	return FMath::RoundToInt(FMath::Lerp(static_cast<float>(HeightMin), static_cast<float>(HeightMax), U));
+}
+
+FColor FTPTerrainGen::BiomeTintAt(int32 Wx, int32 Wy) const
+{
+	const float TV = Temp.Noise2D(Wx * FREQ_BIOME, Wy * FREQ_BIOME);
+	const float HV = Humidity.Noise2D(Wx * FREQ_BIOME, Wy * FREQ_BIOME);
+	return TintFor(PickBiome(TV, HV));
 }
 
 void FTPTerrainGen::GenerateChunk(const FIntVector& Coord, TArray<BlockId>& OutBlocks,

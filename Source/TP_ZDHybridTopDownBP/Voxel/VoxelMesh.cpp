@@ -37,7 +37,9 @@ namespace
 
 	// Sampler returns the block id for any local coord in [-1, ChunkSize]
 	// (the chunk's own cells plus the 1-block apron used for face culling).
-	void BuildImpl(FTPChunkMeshData& Out, const TFunctionRef<BlockId(int32, int32, int32)>& Sample)
+	void BuildImpl(FTPChunkMeshData& Out,
+		const TFunctionRef<BlockId(int32, int32, int32)>& Sample,
+		const TFunctionRef<FColor(int32, int32, BlockId)>& TintFn)
 	{
 		using namespace VoxelConst;
 		Out.Reset();
@@ -46,11 +48,14 @@ namespace
 		for (int32 y = 0; y < ChunkSize; ++y)
 		for (int32 x = 0; x < ChunkSize; ++x)
 		{
-			const FTPBlockType& Type = FTPBlockRegistry::Get(static_cast<ETPBlockId>(Sample(x, y, z)));
+			const BlockId CurId = Sample(x, y, z);
+			const FTPBlockType& Type = FTPBlockRegistry::Get(static_cast<ETPBlockId>(CurId));
 			if (!Type.bSolid)
 			{
 				continue;
 			}
+
+			const FLinearColor Col(TintFn(x, y, CurId));
 
 			for (int32 f = 0; f < 6; ++f)
 			{
@@ -66,7 +71,6 @@ namespace
 
 				const int32 Base = Out.Vertices.Num();
 				const FVector Origin(x * BlockSize, y * BlockSize, z * BlockSize);
-				const FLinearColor Col(Type.Color);
 
 				for (int32 v = 0; v < 4; ++v)
 				{
@@ -98,20 +102,36 @@ namespace
 
 void VoxelMesh::BuildChunkMesh(const FTPChunk& C, FTPChunkMeshData& Out)
 {
-	BuildImpl(Out, [&C](int32 X, int32 Y, int32 Z) -> BlockId
-	{
-		if (InRange(X) && InRange(Y) && InRange(Z))
+	BuildImpl(Out,
+		[&C](int32 X, int32 Y, int32 Z) -> BlockId
 		{
-			return C.Get(X, Y, Z);
-		}
-		return static_cast<BlockId>(ETPBlockId::Air); // border = exposed
-	});
+			if (InRange(X) && InRange(Y) && InRange(Z))
+			{
+				return C.Get(X, Y, Z);
+			}
+			return static_cast<BlockId>(ETPBlockId::Air); // border = exposed
+		},
+		[](int32, int32, BlockId) -> FColor
+		{
+			return FColor::White; // no biome data in the standalone path
+		});
 }
 
-void VoxelMesh::BuildChunkMeshPadded(const TArray<BlockId>& Padded, FTPChunkMeshData& Out)
+void VoxelMesh::BuildChunkMeshPadded(const TArray<BlockId>& Padded, const TArray<FColor>& ColumnTint,
+	FTPChunkMeshData& Out)
 {
-	BuildImpl(Out, [&Padded](int32 X, int32 Y, int32 Z) -> BlockId
-	{
-		return Padded[PaddedIndex(X, Y, Z)];
-	});
+	BuildImpl(Out,
+		[&Padded](int32 X, int32 Y, int32 Z) -> BlockId
+		{
+			return Padded[PaddedIndex(X, Y, Z)];
+		},
+		[&ColumnTint](int32 X, int32 Y, BlockId Id) -> FColor
+		{
+			if (Id == static_cast<BlockId>(ETPBlockId::Grass) ||
+				Id == static_cast<BlockId>(ETPBlockId::Leaves))
+			{
+				return ColumnTint[X + Y * VoxelConst::ChunkSize];
+			}
+			return FColor::White;
+		});
 }

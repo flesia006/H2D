@@ -16,6 +16,10 @@ public:
 	// World Z of the surface column at world block (Wx, Wy).
 	int32 SurfaceHeight(int32 Wx, int32 Wy) const;
 
+	// Per-biome vertex tint for grass/leaves at world column (Wx, Wy).
+	// Multiplies the atlas color in the material (white = no change).
+	FColor BiomeTintAt(int32 Wx, int32 Wy) const;
+
 	// Fills a chunk's block array (size ChunkVolume) for the given chunk coord:
 	// terrain -> caves -> ore veins -> vegetation, all deterministic from the seed.
 	// Blocks that fall outside this chunk (e.g. tree leaves) are appended to

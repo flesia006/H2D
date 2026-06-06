@@ -45,8 +45,8 @@ class FChunkMeshTask : public FNonAbandonableTask
 public:
 	friend class FAsyncTask<FChunkMeshTask>;
 
-	explicit FChunkMeshTask(TArray<BlockId>&& InPadded)
-		: Padded(MoveTemp(InPadded))
+	FChunkMeshTask(TArray<BlockId>&& InPadded, TArray<FColor>&& InColumnTint)
+		: Padded(MoveTemp(InPadded)), ColumnTint(MoveTemp(InColumnTint))
 	{
 	}
 
@@ -55,7 +55,7 @@ public:
 
 	void DoWork()
 	{
-		VoxelMesh::BuildChunkMeshPadded(Padded, Mesh);
+		VoxelMesh::BuildChunkMeshPadded(Padded, ColumnTint, Mesh);
 	}
 
 	FORCEINLINE TStatId GetStatId() const
@@ -65,4 +65,5 @@ public:
 
 private:
 	TArray<BlockId> Padded;
+	TArray<FColor>  ColumnTint;
 };

@@ -23,6 +23,9 @@ namespace VoxelMesh
 	void BuildChunkMesh(const FTPChunk& Chunk, FTPChunkMeshData& Out);
 
 	// Mesh from a padded block volume (chunk + neighbor apron). Border faces cull
-	// against the apron so chunks join seamlessly. Self-contained -> thread-safe.
-	void BuildChunkMeshPadded(const TArray<BlockId>& Padded, FTPChunkMeshData& Out);
+	// against the apron so chunks join seamlessly. ColumnTint (ChunkArea entries,
+	// indexed x + y*ChunkSize) is emitted as vertex color on grass/leaves faces
+	// for biome tinting; other blocks get white. Self-contained -> thread-safe.
+	void BuildChunkMeshPadded(const TArray<BlockId>& Padded, const TArray<FColor>& ColumnTint,
+		FTPChunkMeshData& Out);
 }
