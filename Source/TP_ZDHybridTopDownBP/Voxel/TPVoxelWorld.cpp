@@ -6,7 +6,13 @@
 #include "ChunkGenTask.h"
 #include "TerrainGen.h"
 #include "BlockType.h"
+#include "ChunkSave.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
+#include "Serialization/MemoryWriter.h"
+#include "Serialization/MemoryReader.h"
 
 ATPVoxelWorld::ATPVoxelWorld()
 {
@@ -29,6 +35,12 @@ void ATPVoxelWorld::BeginPlay()
 
 void ATPVoxelWorld::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Persist all outstanding user edits before tearing down.
+	for (const TPair<FIntVector, TSharedPtr<FTPChunk>>& KV : Chunks)
+	{
+		SaveChunkDelta(*KV.Value);
+	}
+
 	DrainAllTasks();
 	Super::EndPlay(EndPlayReason);
 }
@@ -125,6 +137,10 @@ void ATPVoxelWorld::UnloadFarFrom(const FIntVector& Center)
 	for (const FIntVector& C : ToRemove)
 	{
 		CancelTasksAt(C);
+		if (TSharedPtr<FTPChunk>* Chunk = Chunks.Find(C))
+		{
+			SaveChunkDelta(**Chunk); // persist user edits before discarding
+		}
 		if (TWeakObjectPtr<ATPChunkActor>* Found = Actors.Find(C))
 		{
 			if (ATPChunkActor* A = Found->Get())
@@ -195,6 +211,9 @@ void ATPVoxelWorld::CollectGenTasks()
 			}
 			PendingForChunk.Remove(C);
 		}
+
+		// User edits from a previous session win over procedural + vegetation.
+		LoadAndApplyDelta(*Sp);
 
 		Chunks.Add(C, Sp);
 
@@ -346,6 +365,61 @@ void ATPVoxelWorld::ApplyEdit(FTPChunk& Chunk, const FPendingEdit& Edit)
 		Chunk.Blocks[Idx] = Edit.Block;
 		Chunk.bDirty = true; // generated vegetation, not a user edit -> no bModified
 	}
+}
+
+FString ATPVoxelWorld::ChunkFilePath(const FIntVector& Coord) const
+{
+	const FString WorldName = FString::Printf(TEXT("World_%lld"), Seed);
+	return FPaths::ProjectSavedDir() / TEXT("VoxelWorlds") / WorldName /
+		FString::Printf(TEXT("c_%d_%d_%d.bin"), Coord.X, Coord.Y, Coord.Z);
+}
+
+void ATPVoxelWorld::SaveChunkDelta(const FTPChunk& Chunk) const
+{
+	if (Chunk.Edits.Num() == 0)
+	{
+		return; // nothing user-changed -> no file
+	}
+
+	FChunkSave S;
+	S.Coord = Chunk.Coord;
+	S.Edits.Reserve(Chunk.Edits.Num());
+	for (const TPair<uint16, BlockId>& KV : Chunk.Edits)
+	{
+		S.Edits.Add(FBlockEdit{ KV.Key, KV.Value });
+	}
+
+	TArray<uint8> Bytes;
+	FMemoryWriter Ar(Bytes);
+	Ar << S;
+
+	const FString Path = ChunkFilePath(Chunk.Coord);
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree*/ true);
+	FFileHelper::SaveArrayToFile(Bytes, *Path);
+}
+
+bool ATPVoxelWorld::LoadAndApplyDelta(FTPChunk& Chunk) const
+{
+	TArray<uint8> Bytes;
+	if (!FFileHelper::LoadFileToArray(Bytes, *ChunkFilePath(Chunk.Coord)))
+	{
+		return false;
+	}
+
+	FMemoryReader Ar(Bytes);
+	FChunkSave S;
+	Ar << S;
+
+	for (const FBlockEdit& E : S.Edits)
+	{
+		if (E.LocalIndex < Chunk.Blocks.Num())
+		{
+			Chunk.Blocks[E.LocalIndex] = E.NewId;
+			Chunk.Edits.Add(E.LocalIndex, E.NewId); // keep so re-save persists
+		}
+	}
+	Chunk.bModified = true;
+	return true;
 }
 
 void ATPVoxelWorld::MarkNeighborsDirty(const FIntVector& Coord)

@@ -113,4 +113,9 @@ private:
 
 	void RouteCrossEdit(const FPendingEdit& Edit);
 	static void ApplyEdit(FTPChunk& Chunk, const FPendingEdit& Edit);
+
+	// Save/load of user edits (per-chunk delta files under Saved/VoxelWorlds).
+	FString ChunkFilePath(const FIntVector& Coord) const;
+	void SaveChunkDelta(const FTPChunk& Chunk) const;
+	bool LoadAndApplyDelta(FTPChunk& Chunk) const;
 };

@@ -11,6 +11,10 @@ struct FTPChunk
 	bool            bDirty    = false; // needs remesh
 	bool            bModified = false; // user-edited (save target)
 
+	// User edits vs procedural generation: localIndex -> blockId. Only Set()
+	// (i.e. SetBlockWorld) writes here; generation/vegetation write Blocks directly.
+	TMap<uint16, BlockId> Edits;
+
 	FTPChunk()
 	{
 		Blocks.Init(static_cast<BlockId>(ETPBlockId::Air), VoxelConst::ChunkVolume);
@@ -28,7 +32,9 @@ struct FTPChunk
 
 	FORCEINLINE void Set(int32 X, int32 Y, int32 Z, BlockId Id)
 	{
-		Blocks[Index(X, Y, Z)] = Id;
+		const int32 I = Index(X, Y, Z);
+		Blocks[I] = Id;
+		Edits.Add(static_cast<uint16>(I), Id);
 		bDirty = true;
 		bModified = true;
 	}
