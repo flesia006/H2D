@@ -47,6 +47,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Camera Rig")
 	float GetCameraYaw() const { return CurrentYaw; }
 
+	// Converts a screen-relative stick input (X = right, Y = forward/away from
+	// camera) into a world-space ground direction, so controls stay intuitive as
+	// the camera orbits. Feed the result to AddMovementInput. Magnitude clamped to 1.
+	UFUNCTION(BlueprintPure, Category = "Camera Rig")
+	FVector GetCameraRelativeMove(FVector2D Input) const;
+
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 		FActorComponentTickFunction* ThisTickFunction) override;

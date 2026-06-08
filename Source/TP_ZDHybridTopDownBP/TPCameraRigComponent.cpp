@@ -52,6 +52,22 @@ void UTPCameraRigComponent::RotateCCW()
 	TargetYaw -= StepDegrees();
 }
 
+FVector UTPCameraRigComponent::GetCameraRelativeMove(FVector2D Input) const
+{
+	// Use the live camera yaw so "forward" means into the screen, away from camera.
+	float Yaw = CurrentYaw;
+	if (const APlayerCameraManager* PCM = UGameplayStatics::GetPlayerCameraManager(this, 0))
+	{
+		Yaw = PCM->GetCameraRotation().Yaw;
+	}
+
+	const FRotationMatrix Rot(FRotator(0.f, Yaw, 0.f));
+	const FVector Forward = Rot.GetUnitAxis(EAxis::X);
+	const FVector Right   = Rot.GetUnitAxis(EAxis::Y);
+
+	return (Forward * Input.Y + Right * Input.X).GetClampedToMaxSize(1.f);
+}
+
 void UTPCameraRigComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	FActorComponentTickFunction* ThisTickFunction)
 {
