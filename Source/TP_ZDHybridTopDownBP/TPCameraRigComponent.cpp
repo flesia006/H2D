@@ -106,6 +106,9 @@ void UTPCameraRigComponent::UpdateBillboard()
 		return;
 	}
 
-	const FRotator Facing(0.f, Dir.Rotation().Yaw + SpriteYawOffset, 0.f);
+	// Paper2D sprite planes face their local Y axis (not +X), so a 90-degree base
+	// correction turns the flat face toward the camera instead of showing it edge-on.
+	// If the sprite shows its back, flip SpriteYawOffset by 180.
+	const FRotator Facing(0.f, Dir.Rotation().Yaw + 90.f + SpriteYawOffset, 0.f);
 	SpriteRoot->SetWorldRotation(Facing);
 }
