@@ -53,6 +53,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Camera Rig")
 	FVector GetCameraRelativeMove(FVector2D Input) const;
 
+	// Rotates a world direction (e.g. character velocity) into the camera's frame
+	// so the sprite's directional animation matches what's on screen as the camera
+	// orbits. Feed this into the PaperZD direction selection. +X = into screen.
+	UFUNCTION(BlueprintPure, Category = "Camera Rig")
+	FVector GetCameraRelativeDir(FVector WorldDir) const;
+
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 		FActorComponentTickFunction* ThisTickFunction) override;

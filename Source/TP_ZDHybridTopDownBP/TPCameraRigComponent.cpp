@@ -36,6 +36,18 @@ void UTPCameraRigComponent::BeginPlay()
 		}
 	}
 
+	// The orbit must be independent of the pawn's facing. If the boom inherits
+	// pawn rotation, a pawn that turns toward its movement drags the camera and
+	// the controls drift ("camera and movement don't match"). Make the arm
+	// absolute so its world yaw is exactly CurrentYaw.
+	if (USpringArmComponent* Arm = Cast<USpringArmComponent>(CameraBoom))
+	{
+		Arm->bUsePawnControlRotation = false;
+		Arm->bInheritPitch = false;
+		Arm->bInheritYaw   = false;
+		Arm->bInheritRoll  = false;
+	}
+
 	if (CameraBoom)
 	{
 		CurrentYaw = TargetYaw = CameraBoom->GetRelativeRotation().Yaw;
@@ -54,18 +66,21 @@ void UTPCameraRigComponent::RotateCCW()
 
 FVector UTPCameraRigComponent::GetCameraRelativeMove(FVector2D Input) const
 {
-	// Use the live camera yaw so "forward" means into the screen, away from camera.
-	float Yaw = CurrentYaw;
-	if (const APlayerCameraManager* PCM = UGameplayStatics::GetPlayerCameraManager(this, 0))
-	{
-		Yaw = PCM->GetCameraRotation().Yaw;
-	}
-
-	const FRotationMatrix Rot(FRotator(0.f, Yaw, 0.f));
+	// Single source of truth: the rig's CurrentYaw (== camera world yaw, since the
+	// arm is decoupled from the pawn). Forward = into the screen, away from camera.
+	const FRotationMatrix Rot(FRotator(0.f, CurrentYaw, 0.f));
 	const FVector Forward = Rot.GetUnitAxis(EAxis::X);
 	const FVector Right   = Rot.GetUnitAxis(EAxis::Y);
 
 	return (Forward * Input.Y + Right * Input.X).GetClampedToMaxSize(1.f);
+}
+
+FVector UTPCameraRigComponent::GetCameraRelativeDir(FVector WorldDir) const
+{
+	// Express a world direction (e.g. velocity) in the camera's yaw frame so the
+	// PaperZD direction logic picks the sprite the player actually sees.
+	// Result: +X = into screen (away from camera), +Y = screen-right.
+	return FRotator(0.f, -CurrentYaw, 0.f).RotateVector(WorldDir);
 }
 
 void UTPCameraRigComponent::TickComponent(float DeltaTime, ELevelTick TickType,
