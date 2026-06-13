@@ -66,21 +66,21 @@ void UTPCameraRigComponent::RotateCCW()
 
 FVector UTPCameraRigComponent::GetCameraRelativeMove(FVector2D Input) const
 {
-	// Single source of truth: the rig's CurrentYaw (== camera world yaw, since the
-	// arm is decoupled from the pawn). Forward = into the screen, away from camera.
-	const FRotationMatrix Rot(FRotator(0.f, CurrentYaw, 0.f));
+	// CurrentYaw is the boom yaw; the camera sits at the boom's end and looks back
+	// toward the pivot, so the screen-forward direction is rotated by 180.
+	const FRotationMatrix Rot(FRotator(0.f, CurrentYaw + 180.f, 0.f));
 	const FVector Forward = Rot.GetUnitAxis(EAxis::X);
-	const FVector Right   = Rot.GetUnitAxis(EAxis::Y);
+	// IA_Move's X comes in as screen-left in this project, so flip the right axis.
+	const FVector Right   = -Rot.GetUnitAxis(EAxis::Y);
 
 	return (Forward * Input.Y + Right * Input.X).GetClampedToMaxSize(1.f);
 }
 
 FVector UTPCameraRigComponent::GetCameraRelativeDir(FVector WorldDir) const
 {
-	// Express a world direction (e.g. velocity) in the camera's yaw frame so the
-	// PaperZD direction logic picks the sprite the player actually sees.
-	// Result: +X = into screen (away from camera), +Y = screen-right.
-	return FRotator(0.f, -CurrentYaw, 0.f).RotateVector(WorldDir);
+	// Same view-yaw as movement so animation direction stays in lockstep with
+	// what the player sees. +X = into screen (away from camera), +Y = screen-right.
+	return FRotator(0.f, -(CurrentYaw + 180.f), 0.f).RotateVector(WorldDir);
 }
 
 void UTPCameraRigComponent::TickComponent(float DeltaTime, ELevelTick TickType,
