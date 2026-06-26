@@ -26,6 +26,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCombatLog, const FString&, Messag
 // drives the turn loop, resolves actions, and broadcasts phase / log events
 // for the UI to react to. Stateless across BeginCombat calls — each call resets.
 UCLASS()
+// Push-hook test comment for the daily report automation.
 class TP_ZDHYBRIDTOPDOWNBP_API ATPCombatManager : public AActor
 {
 	GENERATED_BODY()
