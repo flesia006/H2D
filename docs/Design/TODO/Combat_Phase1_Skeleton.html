@@ -22,6 +22,8 @@ h2 { color: #1a5fb4; margin-top: 1.8em; border-bottom: 1px solid #ddd; padding-b
 .dod strong { color: #2e7d32; }
 .status { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .s-todo { background: #e5e7eb; color: #444; }
+.s-progress { background: #fff3cd; color: #856404; }
+.s-done { background: #d4edda; color: #155724; }
 code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px;
        font-family: Consolas, monospace; font-size: 13px; color: #c0392b; }
 pre { background: #2b2b2b; padding: 12px 16px; border-radius: 6px;
@@ -61,7 +63,7 @@ pre code, pre code.hljs { background: transparent; padding: 0; color: #a9b7c6; }
 <!-- Task 1.1 -->
 <div class="task">
 <h3>Task 1.1 — 스탯 & 전투원 정의 데이터</h3>
-<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<div class="meta">상태: <span class="status s-progress">IN PROGRESS</span></div>
 <h4>목적</h4>
 <p>스탯 묶음과 전투원 템플릿을 자산화. 같은 정의를 플레이어·적이 공유한다(인스턴스만 다름).</p>
 <h4>코드</h4>
@@ -92,12 +94,13 @@ public:
 };
 </code></pre>
 <div class="dod"><strong>DoD</strong> · 에디터에서 <code>DA_Slime</code>, <code>DA_Hero</code> 같은 자산을 만들어 스탯/스프라이트 지정 가능.</div>
+<div class="note">구현 메모: <code>FTPCombatStats</code>, <code>UTPCombatantDef</code> C++ 타입은 빌드 완료. 실제 <code>DA_Hero</code>/<code>DA_Slime</code> 자산 생성은 남음.</div>
 </div>
 
 <!-- Task 1.2 -->
 <div class="task">
 <h3>Task 1.2 — 액션 정의</h3>
-<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<div class="meta">상태: <span class="status s-progress">IN PROGRESS</span></div>
 <h4>목적</h4>
 <p>액션(공격/방어/도망)을 데이터로 정의해 둔다. Phase 1은 빌트인 3종만 쓰지만 자료형은 확장형으로.</p>
 <h4>코드</h4>
@@ -120,12 +123,13 @@ public:
 </code></pre>
 <p>Phase 1 빌트인: <code>Action_Attack</code>(공격), <code>Action_Defend</code>(방어, DEF 1턴 +50%), <code>Action_Run</code>(도망).</p>
 <div class="dod"><strong>DoD</strong> · 3개 액션 자산을 에디터에서 생성, 전투 매니저가 자산 참조만으로 동작.</div>
+<div class="note">구현 메모: <code>UTPCombatActionDef</code> C++ 타입과 액션 enum은 빌드 완료. <code>Action_Attack</code>/<code>Action_Defend</code>/<code>Action_Run</code> 자산 생성은 남음.</div>
 </div>
 
 <!-- Task 1.3 -->
 <div class="task">
 <h3>Task 1.3 — 런타임 인스턴스 (FTPCombatant)</h3>
-<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<div class="meta">상태: <span class="status s-done">DONE</span></div>
 <h4>목적</h4>
 <p>전투 중 가변 상태(현재 HP/MP, 일시 버프)는 정의(<code>Def</code>)와 분리해 런타임 인스턴스로 들고 있는다.</p>
 <h4>코드</h4>
@@ -153,7 +157,7 @@ struct FTPCombatant {
 <!-- Task 1.4 -->
 <div class="task">
 <h3>Task 1.4 — 전투 매니저 상태머신</h3>
-<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<div class="meta">상태: <span class="status s-done">DONE</span></div>
 <h4>목적</h4>
 <p>전투 진행의 단일 책임자. 명시적 상태로 진행해 디버깅·BP 연결이 쉬워야 한다.</p>
 <h4>코드</h4>
@@ -192,12 +196,13 @@ protected:
 };
 </code></pre>
 <div class="dod"><strong>DoD</strong> · <code>BeginCombat</code>→<code>StartRound</code>→<code>AwaitInput</code>까지 도달, <code>OnPhaseChanged</code>가 BP로 정상 브로드캐스트.</div>
+<div class="note">구현 메모: <code>OnPhaseChanged</code>, <code>OnCombatLog</code>에 더해 <code>OnCombatStateChanged</code>, <code>OnCombatEnded</code>, <code>GetPlayer()</code>, <code>GetEnemy()</code>, <code>IsAwaitingPlayerInput()</code>, <code>IsCombatOver()</code>를 추가.</div>
 </div>
 
 <!-- Task 1.5 -->
 <div class="task">
 <h3>Task 1.5 — 액션 해결 & 데미지 공식</h3>
-<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<div class="meta">상태: <span class="status s-done">DONE</span></div>
 <h4>목적</h4>
 <p>고전 JRPG식 단순 공식. "튠은 데이터로, 분기는 코드로"가 원칙.</p>
 <h4>코드</h4>
@@ -222,12 +227,13 @@ static bool RollFlee(const FTPCombatant&amp; Me, const FTPCombatant&amp; Foe)
 </code></pre>
 <p>방어는 1턴 동안 <code>bDefending=true</code>를 켜 두고 라운드 끝에 리셋. 도망 실패는 차례를 그냥 소진한다.</p>
 <div class="dod"><strong>DoD</strong> · 동일 인풋에서 데미지 분포가 합리적 범위(약 ±10% + 크리)이고, 방어 시 받는 피해가 명확히 감소한다.</div>
+<div class="note">구현 메모: 공격/방어/도망 처리와 단순 적 AI(항상 공격)를 구현. 로그 문자열은 깨짐 방지를 위해 ASCII로 정리.</div>
 </div>
 
 <!-- Task 1.6 -->
 <div class="task">
 <h3>Task 1.6 — UI / 입력 계약 (BP 측)</h3>
-<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<div class="meta">상태: <span class="status s-progress">IN PROGRESS</span></div>
 <h4>목적</h4>
 <p>전투 매니저는 데이터·로직만 책임지고, 표시·입력은 UMG가 담당. 두 영역의 인터페이스를 명확히 굳혀 둔다.</p>
 <h4>BP가 매니저에 의존하는 것</h4>
@@ -245,12 +251,13 @@ static bool RollFlee(const FTPCombatant&amp; Me, const FTPCombatant&amp; Foe)
   <li><code>OnPhaseChanged == AwaitInput</code> 일 때만 입력 활성화</li>
 </ul>
 <div class="dod"><strong>DoD</strong> · UI 없이 콘솔 로그만으로도 매니저가 단독 동작(테스트 가능), UI를 붙이면 동일 흐름이 시각화됨.</div>
+<div class="note">구현 메모: C++ 매니저 쪽 UI 계약은 보강됨. 실제 <code>WBP_Combat</code> 제작과 버튼/HP바 바인딩은 남음.</div>
 </div>
 
 <!-- Task 1.7 -->
 <div class="task">
 <h3>Task 1.7 — 인카운터 트리거 & 전투 진입</h3>
-<div class="meta">상태: <span class="status s-todo">TODO</span></div>
+<div class="meta">상태: <span class="status s-progress">IN PROGRESS</span></div>
 <h4>목적</h4>
 <p>맵에서 전투로 들어가는 경로를 단순하게 하나만 우선 만든다. 옥토파스식(맵 위 적 액터 접촉) 권장.</p>
 <h4>코드</h4>
@@ -268,6 +275,7 @@ protected:
 </code></pre>
 <p>전환 방식은 단순화: 같은 레벨에 <strong>전투 UI 오버레이</strong>를 띄우고, 월드는 정지(<code>UGameplayStatics::SetGamePaused</code>) → 종료 시 해제. 별도 전투 레벨로 가는 풀 전환은 Phase 2+에서 결정.</p>
 <div class="dod"><strong>DoD</strong> · 플레이어가 트리거에 닿으면 전투가 시작되고, 종료 후 맵 입력이 정상 복귀.</div>
+<div class="note">구현 메모: <code>ATPEncounterTrigger</code> C++ 골격과 <code>PlayerTag</code> 필터는 구현됨. 레벨 배치, 플레이어 태그 지정, 전투 UI 오버레이/입력 복귀는 남음.</div>
 </div>
 
 <section>

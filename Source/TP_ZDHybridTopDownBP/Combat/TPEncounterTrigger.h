@@ -31,6 +31,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat", meta = (ClampMin = "1"))
 	float TriggerRadius = 80.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	FName PlayerTag = TEXT("Player");
+
 protected:
 	virtual void NotifyActorBeginOverlap(AActor* OtherActor) override;
 

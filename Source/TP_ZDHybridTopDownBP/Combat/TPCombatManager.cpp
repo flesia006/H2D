@@ -15,8 +15,9 @@ void ATPCombatManager::BeginCombat(UTPCombatantDef* PlayerDef, UTPCombatantDef* 
 
 	Player.InitFrom(PlayerDef);
 	Enemy.InitFrom(EnemyDef);
+	BroadcastStateChanged();
 
-	Log(FString::Printf(TEXT("%s 와(과) %s 의 전투!"),
+	Log(FString::Printf(TEXT("Combat started: %s vs %s"),
 		*PlayerDef->DisplayName, *EnemyDef->DisplayName));
 
 	StartNewRound();
@@ -34,13 +35,12 @@ bool ATPCombatManager::SubmitPlayerAction(UTPCombatActionDef* Action, int32 /*Ta
 	{
 		if (Player.CurMP < Action->MPCost) { return false; }
 		Player.CurMP -= Action->MPCost;
+		BroadcastStateChanged();
 	}
 
 	ResolveAction(Action->Kind, Action->Power, /*ActorIdx*/ 0, /*TargetIdx*/ 1);
 
-	if (Phase == ETPCombatPhase::Victory ||
-		Phase == ETPCombatPhase::Defeat  ||
-		Phase == ETPCombatPhase::Fled)
+	if (IsTerminalPhase(Phase))
 	{
 		return true;
 	}
@@ -54,6 +54,16 @@ int32 ATPCombatManager::GetCurrentTurnIndex() const
 {
 	if (!TurnOrder.IsValidIndex(TurnCursor)) { return INDEX_NONE; }
 	return TurnOrder[TurnCursor];
+}
+
+bool ATPCombatManager::IsAwaitingPlayerInput() const
+{
+	return Phase == ETPCombatPhase::AwaitInput && GetCurrentTurnIndex() == 0;
+}
+
+bool ATPCombatManager::IsCombatOver() const
+{
+	return IsTerminalPhase(Phase);
 }
 
 FTPCombatant& ATPCombatManager::CombatantAt(int32 Idx)
@@ -70,6 +80,10 @@ void ATPCombatManager::EnterPhase(ETPCombatPhase Next)
 {
 	Phase = Next;
 	OnPhaseChanged.Broadcast(Next);
+	if (IsTerminalPhase(Next))
+	{
+		OnCombatEnded.Broadcast(Next);
+	}
 }
 
 void ATPCombatManager::StartNewRound()
@@ -78,6 +92,7 @@ void ATPCombatManager::StartNewRound()
 
 	Player.bDefending = false;
 	Enemy.bDefending  = false;
+	BroadcastStateChanged();
 
 	TurnOrder = { 0, 1 };
 	TurnOrder.Sort([this](const int32& A, const int32& B)
@@ -94,14 +109,12 @@ void ATPCombatManager::RunUntilInputOrEnd()
 {
 	while (true)
 	{
-		if (Phase == ETPCombatPhase::Victory ||
-			Phase == ETPCombatPhase::Defeat  ||
-			Phase == ETPCombatPhase::Fled)
+		if (IsTerminalPhase(Phase))
 		{
 			return;
 		}
 
-		// Skip dead combatants (shouldn't happen in 1v1 but be defensive).
+		// Skip dead combatants (shouldn't happen in 1v1 but keep the loop valid).
 		const int32 Idx = GetCurrentTurnIndex();
 		if (Idx == INDEX_NONE || CombatantAt(Idx).bDead)
 		{
@@ -115,12 +128,10 @@ void ATPCombatManager::RunUntilInputOrEnd()
 			return;
 		}
 
-		// Enemy AI: always Attack the player for Phase 1.
+		// Enemy AI: always attack the player for Phase 1.
 		ResolveAction(ETPActionKind::Attack, /*Power*/ 1.0f, /*Actor*/ Idx, /*Target*/ OpponentOf(Idx));
 
-		if (Phase == ETPCombatPhase::Victory ||
-			Phase == ETPCombatPhase::Defeat  ||
-			Phase == ETPCombatPhase::Fled)
+		if (IsTerminalPhase(Phase))
 		{
 			return;
 		}
@@ -142,12 +153,14 @@ void ATPCombatManager::ResolveAction(ETPActionKind Kind, float Power, int32 Acto
 		{
 			const int32 Dmg = ComputeAttackDamage(Actor, Target, Power);
 			Target.CurHP = FMath::Max(0, Target.CurHP - Dmg);
-			Log(FString::Printf(TEXT("%s 의 공격! %s 에게 %d 데미지"),
+			BroadcastStateChanged();
+			Log(FString::Printf(TEXT("%s attacks %s for %d damage"),
 				*ActorName, *TargetName, Dmg));
 			if (Target.CurHP <= 0)
 			{
 				Target.bDead = true;
-				Log(FString::Printf(TEXT("%s 쓰러짐"), *TargetName));
+				BroadcastStateChanged();
+				Log(FString::Printf(TEXT("%s falls"), *TargetName));
 				EnterPhase(Target.IsPlayer() ? ETPCombatPhase::Defeat : ETPCombatPhase::Victory);
 			}
 			break;
@@ -156,7 +169,8 @@ void ATPCombatManager::ResolveAction(ETPActionKind Kind, float Power, int32 Acto
 		case ETPActionKind::Defend:
 		{
 			Actor.bDefending = true;
-			Log(FString::Printf(TEXT("%s 방어 자세"), *ActorName));
+			BroadcastStateChanged();
+			Log(FString::Printf(TEXT("%s defends"), *ActorName));
 			break;
 		}
 
@@ -164,12 +178,12 @@ void ATPCombatManager::ResolveAction(ETPActionKind Kind, float Power, int32 Acto
 		{
 			if (RollFlee(Actor, Target))
 			{
-				Log(FString::Printf(TEXT("%s 도망쳤다!"), *ActorName));
+				Log(FString::Printf(TEXT("%s fled"), *ActorName));
 				EnterPhase(ETPCombatPhase::Fled);
 			}
 			else
 			{
-				Log(FString::Printf(TEXT("%s 도망 실패..."), *ActorName));
+				Log(FString::Printf(TEXT("%s failed to flee"), *ActorName));
 			}
 			break;
 		}
@@ -177,7 +191,7 @@ void ATPCombatManager::ResolveAction(ETPActionKind Kind, float Power, int32 Acto
 		case ETPActionKind::Skill:
 		case ETPActionKind::Item:
 			// Phase 2 territory; treat as a wasted turn so the flow keeps moving.
-			Log(FString::Printf(TEXT("%s 의 행동은 아직 구현되지 않음"), *ActorName));
+			Log(FString::Printf(TEXT("%s uses an unimplemented action"), *ActorName));
 			break;
 	}
 }
@@ -196,6 +210,11 @@ void ATPCombatManager::Log(const FString& Msg)
 {
 	UE_LOG(LogTemp, Log, TEXT("[Combat] %s"), *Msg);
 	OnCombatLog.Broadcast(Msg);
+}
+
+void ATPCombatManager::BroadcastStateChanged()
+{
+	OnCombatStateChanged.Broadcast();
 }
 
 int32 ATPCombatManager::ComputeAttackDamage(const FTPCombatant& A, const FTPCombatant& D, float Power)
@@ -217,4 +236,11 @@ bool ATPCombatManager::RollFlee(const FTPCombatant& Me, const FTPCombatant& Foe)
 	if (!Me.Def) { return false; }
 	const float Base = 0.5f + 0.05f * (Me.GetSPD() - Foe.GetSPD()) + Me.Def->Stats.LUK * 0.01f;
 	return FMath::FRand() < FMath::Clamp(Base, 0.1f, 0.95f);
+}
+
+bool ATPCombatManager::IsTerminalPhase(ETPCombatPhase InPhase)
+{
+	return InPhase == ETPCombatPhase::Victory ||
+		InPhase == ETPCombatPhase::Defeat ||
+		InPhase == ETPCombatPhase::Fled;
 }

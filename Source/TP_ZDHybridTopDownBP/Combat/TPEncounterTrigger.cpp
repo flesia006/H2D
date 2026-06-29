@@ -22,6 +22,10 @@ void ATPEncounterTrigger::NotifyActorBeginOverlap(AActor* OtherActor)
 	{
 		return; // only pawns kick off combat
 	}
+	if (!PlayerTag.IsNone() && !OtherActor->ActorHasTag(PlayerTag))
+	{
+		return;
+	}
 	if (!PlayerDef || !EnemyDef)
 	{
 		return;
